@@ -40,10 +40,10 @@ async def main() -> None:
     dp = Dispatcher()
 
     # ===== تسجيل الأنظمة (Routers) =====
-    # سيتم إضافة كل نظام هنا لاحقاً، كل نظام بسطر واحد مستقل
-# ===== تسجيل الأنظمة (Routers) =====
     from systems.members import members as members_system
     dp.include_router(members_system.router)
+
+    try:
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
     finally:
