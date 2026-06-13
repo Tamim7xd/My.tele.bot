@@ -23,9 +23,13 @@
    - إشعار للمجموعة
    - تسجيل في الأرشيف (وفي المخالفات إن طُلب)
 
+⚠️ فحص التسلسل الهرمي (can_act_on):
+لا يمكن لعضو تنفيذ خصم/مكافأة على عضو برتبة أعلى أو مساوية له،
+إلا المالك (owner) الذي يستطيع التصرف على أي شخص.
+
 هذا الملف مستقل - يستخدم:
 - systems/wallet/wallet.py (تعديل الرصيد)
-- systems/moderators/permissions.py (التحقق من الصلاحيات)
+- systems/moderators/permissions.py (التحقق من الصلاحيات والتسلسل الهرمي)
 - systems/members/queries.py (جلب بيانات الأعضاء)
 """
 
@@ -96,6 +100,11 @@ async def _start_flow(message: Message, state: FSMContext, action: str) -> None:
         username=target.username,
         full_name=target.full_name,
     )
+
+    # فحص التسلسل الهرمي: لا يمكن للضعيف التصرف على الأقوى أو المساوي
+    if not await permissions.can_act_on(pool, message.from_user.id, target.id):
+        await message.reply(messages.NO_PERMISSION)
+        return
 
     # حفظ بيانات العملية في FSM context
     await state.update_data(
