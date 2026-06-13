@@ -57,6 +57,9 @@ async def main() -> None:
     from systems.rewards import rewards as rewards_system
     dp.include_router(rewards_system.router)
 
+    from systems.cleanup import cleanup as cleanup_system
+    dp.include_router(cleanup_system.router)
+
     # أخيراً: members (يطابق كل الرسائل - يجب أن يكون آخر شيء)
     from systems.members import members as members_system
     dp.include_router(members_system.router)
