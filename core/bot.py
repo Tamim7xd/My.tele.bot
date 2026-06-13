@@ -48,6 +48,9 @@ async def main() -> None:
     # ===== تسجيل الأنظمة (Routers) =====
     # أولاً: الأنظمة ذات الأوامر المحددة (شرط نص) أو الفلاتر العامة
 
+    from systems.owner import owner as owner_system
+    dp.include_router(owner_system.router)
+
     from systems.moderators import moderators as moderators_system
     dp.include_router(moderators_system.router)
 
