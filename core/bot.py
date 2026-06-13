@@ -9,7 +9,7 @@
 بدون أي تأثير على الأنظمة الأخرى.
 
 ⚠️ ملاحظة مهمة عن الترتيب:
-أي Router له شرط نص محدد (أمر معين مثل "ترتيب" أو "حساب")
+أي Router له شرط نص محدد (أمر معين مثل "ترتيب" أو "حساب" أو "ترقية")
 يجب أن يُسجَّل قبل members_system.router، لأن الأخير
 يطابق كل رسائل المجموعة بدون شرط نص ويوقف المعالجة.
 لذلك: أوامر الأنظمة الأخرى أولاً، ثم members في الأخير.
@@ -46,7 +46,11 @@ async def main() -> None:
     dp = Dispatcher()
 
     # ===== تسجيل الأنظمة (Routers) =====
-    # أولاً: الأنظمة ذات الأوامر المحددة (شرط نص)
+    # أولاً: الأنظمة ذات الأوامر المحددة (شرط نص) أو الفلاتر العامة
+
+    from systems.moderators import moderators as moderators_system
+    dp.include_router(moderators_system.router)
+
     from systems.wallet import leaderboard as wallet_leaderboard
     dp.include_router(wallet_leaderboard.router)
 
