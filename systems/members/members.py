@@ -15,6 +15,7 @@ from aiogram.types import Message
 from core.database import get_pool
 from systems.members import queries
 from systems.members.notifications import messages
+from systems.moderators import permissions
 from core.config import DEFAULT_DELETE_DELAY
 
 
@@ -41,9 +42,7 @@ async def show_account(message: Message) -> None:
         replied_user = message.reply_to_message.from_user
 
         if replied_user.id != message.from_user.id:
-            caller_rank = await queries.get_rank(pool, message.from_user.id)
-
-            if caller_rank in ("moderator", "admin", "owner"):
+            if await permissions.is_staff(pool, message.from_user.id):
                 target_user = replied_user
                 is_viewing_other = True
             else:
