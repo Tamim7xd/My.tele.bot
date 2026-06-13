@@ -7,6 +7,12 @@
 1. أضف import له هنا
 2. أضف dp.include_router(اسم_النظام.router)
 بدون أي تأثير على الأنظمة الأخرى.
+
+⚠️ ملاحظة مهمة عن الترتيب:
+أي Router له شرط نص محدد (أمر معين مثل "ترتيب" أو "حساب")
+يجب أن يُسجَّل قبل members_system.router، لأن الأخير
+يطابق كل رسائل المجموعة بدون شرط نص ويوقف المعالجة.
+لذلك: أوامر الأنظمة الأخرى أولاً، ثم members في الأخير.
 """
 
 import asyncio
@@ -40,12 +46,13 @@ async def main() -> None:
     dp = Dispatcher()
 
     # ===== تسجيل الأنظمة (Routers) =====
-
-    from systems.members import members as members_system
-    dp.include_router(members_system.router)
-
+    # أولاً: الأنظمة ذات الأوامر المحددة (شرط نص)
     from systems.wallet import leaderboard as wallet_leaderboard
     dp.include_router(wallet_leaderboard.router)
+
+    # أخيراً: members (يطابق كل الرسائل - يجب أن يكون آخر شيء)
+    from systems.members import members as members_system
+    dp.include_router(members_system.router)
 
     try:
         await bot.delete_webhook(drop_pending_updates=True)
