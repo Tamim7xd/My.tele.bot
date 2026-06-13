@@ -6,18 +6,18 @@
 
 def countdown_text(seconds_left: int) -> str:
     """نص العد التنازلي قبل التنظيف."""
-    numbers = {5: "5️⃣", 4: "4️⃣", 3: "3️⃣", 2: "2️⃣", 1: "1️⃣", 0: "0️⃣"}
+    numbers = {5: "%100 ▰▰▰▰▰", 4: "%75 ▰▰▰▱▱", 3: "%50 ▰▰▱▱▱", 2: "%25 ▰▱▱▱▱", 1: "%0 ▱▱▱▱▱", 0: ""}
     emoji = numbers.get(seconds_left, str(seconds_left))
 
-    return f"🧹 جارِ التنظيف بعد {emoji}"
+    return f" جارِ التنظيف  {emoji}"
 
 
-CLEANING_NOW = "🧹 جارِ التنظيف..."
+CLEANING_NOW = "جارِ عملية التعفير 😂"
 
 
 def done_text(deleted_count: int) -> str:
     """النص النهائي بعد انتهاء التنظيف."""
-    return f"✅ تم حذف {deleted_count} رسالة."
+    return f" ▮تم تنظيف المجموعة 🫧  {deleted_count} "
 
 
 NO_PERMISSION = "❌ هذا الأمر متاح للمالك والأدمن فقط."
