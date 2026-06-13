@@ -9,7 +9,7 @@
 بدون أي تأثير على الأنظمة الأخرى.
 
 ⚠️ ملاحظة مهمة عن الترتيب:
-أي Router له شرط نص محدد (أمر معين مثل "ترتيب" أو "حساب" أو "ترقية")
+أي Router له شرط نص محدد (أمر معين مثل "ترتيب" أو "حساب" أو "خصم")
 يجب أن يُسجَّل قبل members_system.router، لأن الأخير
 يطابق كل رسائل المجموعة بدون شرط نص ويوقف المعالجة.
 لذلك: أوامر الأنظمة الأخرى أولاً، ثم members في الأخير.
@@ -53,6 +53,9 @@ async def main() -> None:
 
     from systems.wallet import leaderboard as wallet_leaderboard
     dp.include_router(wallet_leaderboard.router)
+
+    from systems.rewards import rewards as rewards_system
+    dp.include_router(rewards_system.router)
 
     # أخيراً: members (يطابق كل الرسائل - يجب أن يكون آخر شيء)
     from systems.members import members as members_system
