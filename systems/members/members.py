@@ -1,15 +1,10 @@
 """
 نظام الأعضاء - الملف الرئيسي.
 
-يحتوي على:
-- تسجيل كل عضو يكتب رسالة في المجموعة تلقائياً
-- زيادة عداد رسائله
-- أمر "حساب" ومرادفاته لعرض بطاقة الحساب
-  - عضو عادي: يشوف حسابه فقط
-  - أدمن/مشرف: بالرد على عضو آخر، يشوف حسابه
-
-هذا الملف مستقل تماماً - حذفه أو تعديله لا يؤثر على أي نظام آخر،
-بشرط ألا تستورده أنظمة أخرى مباشرة (الأفضل التواصل عبر queries.py المشترك).
+ملاحظة مهمة عن الترتيب:
+aiogram يجرب الـ handlers بترتيب تسجيلها، ويتوقف عند أول واحد يطابق.
+لذلك show_account (الذي له شرط نص محدد) مسجل قبل register_and_count
+(الذي يطابق كل الرسائل بدون شرط نص) - وإلا لن تصل أي رسالة لـ show_account.
 """
 
 import asyncio
@@ -26,30 +21,7 @@ from core.config import DEFAULT_DELETE_DELAY
 router = Router(name="members")
 
 
-# ===== الكلمات التي تشغّل أمر الحساب =====
 ACCOUNT_COMMANDS = {"حساب", "حسابي", "الحساب", "معلوماتي", "معلومات"}
-
-
-@router.message(F.chat.type.in_({"group", "supergroup"}))
-async def register_and_count(message: Message) -> None:
-    """
-    يعمل مع كل رسالة في المجموعة:
-    - يسجل العضو إذا لم يكن مسجلاً
-    - يزيد عداد رسائله
-    """
-    if message.from_user is None:
-        return
-
-    pool = await get_pool()
-
-    await queries.ensure_member_exists(
-        pool,
-        user_id=message.from_user.id,
-        username=message.from_user.username,
-        full_name=message.from_user.full_name,
-    )
-
-    await queries.increment_message_count(pool, message.from_user.id)
 
 
 @router.message(
@@ -57,9 +29,6 @@ async def register_and_count(message: Message) -> None:
     F.text.in_(ACCOUNT_COMMANDS),
 )
 async def show_account(message: Message) -> None:
-    """
-    يعرض بطاقة الحساب عند كتابة "حساب" أو أحد مرادفاته.
-    """
     if message.from_user is None:
         return
 
@@ -114,10 +83,24 @@ async def show_account(message: Message) -> None:
         await _auto_delete(message, sent)
 
 
+@router.message(F.chat.type.in_({"group", "supergroup"}))
+async def register_and_count(message: Message) -> None:
+    if message.from_user is None:
+        return
+
+    pool = await get_pool()
+
+    await queries.ensure_member_exists(
+        pool,
+        user_id=message.from_user.id,
+        username=message.from_user.username,
+        full_name=message.from_user.full_name,
+    )
+
+    await queries.increment_message_count(pool, message.from_user.id)
+
+
 async def _auto_delete(command_message: Message, response_message: Message) -> None:
-    """
-    يحذف رسالة الأمر ورد البوت بعد المدة المحددة (DEFAULT_DELETE_DELAY).
-    """
     await asyncio.sleep(DEFAULT_DELETE_DELAY)
 
     try:
