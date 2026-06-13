@@ -33,4 +33,4 @@ def done_text(deleted_count: int) -> str:
 ✨ الفوضى راحت وانطردت برّه المجموعة  {deleted_count} "
 
 
-NO_PERMISSION = "🚫لا تزعل… بس هاي الشغلات الكبار إلها ناسها 😏”"
+NO_PERMISSION = "لا تزعل… بس هاي الشغلات الكبار إلها ناسها 😏”"
