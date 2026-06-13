@@ -40,8 +40,12 @@ async def main() -> None:
     dp = Dispatcher()
 
     # ===== تسجيل الأنظمة (Routers) =====
+
     from systems.members import members as members_system
     dp.include_router(members_system.router)
+
+    from systems.wallet import leaderboard as wallet_leaderboard
+    dp.include_router(wallet_leaderboard.router)
 
     try:
         await bot.delete_webhook(drop_pending_updates=True)
