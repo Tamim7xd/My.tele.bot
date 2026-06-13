@@ -14,14 +14,14 @@
         ...
 """
 
+import json
+
 import asyncpg
+
+from core.config import OWNER_ID
 
 
 # ===== الصلاحيات الثابتة الافتراضية لكل رتبة =====
-# يمكن لكل عضو أن يحصل على صلاحيات إضافية أو إزالة صلاحية معينة
-# عبر عمود permissions (JSONB) في جدول members، والذي يتم دمجه
-# مع هذه القيم الافتراضية.
-
 DEFAULT_PERMISSIONS: dict[str, set[str]] = {
     "member": set(),
     "moderator": {"mute", "deduct", "warn"},
@@ -50,7 +50,12 @@ async def get_permissions(pool: asyncpg.Pool, user_id: int) -> set[str]:
         return set()
 
     rank = row["rank"] or "member"
-    custom = row["permissions"] or {}
+    custom_raw = row["permissions"] or "{}"
+
+    if isinstance(custom_raw, str):
+        custom = json.loads(custom_raw)
+    else:
+        custom = custom_raw
 
     base = set(DEFAULT_PERMISSIONS.get(rank, set()))
 
@@ -63,8 +68,11 @@ async def get_permissions(pool: asyncpg.Pool, user_id: int) -> set[str]:
 async def has_permission(pool: asyncpg.Pool, user_id: int, permission: str) -> bool:
     """
     يتحقق إن كان لدى العضو صلاحية معينة.
-    "owner" و "all" يتجاوزان أي تحقق (صلاحية كاملة).
+    OWNER_ID (من .env) و رتبة "owner" و "all" يتجاوزون أي تحقق (صلاحية كاملة).
     """
+    if user_id == OWNER_ID:
+        return True
+
     async with pool.acquire() as conn:
         rank = await conn.fetchval(
             "SELECT rank FROM members WHERE user_id = $1",
@@ -81,6 +89,9 @@ async def has_permission(pool: asyncpg.Pool, user_id: int, permission: str) -> b
 
 async def is_staff(pool: asyncpg.Pool, user_id: int) -> bool:
     """يتحقق إن كان العضو مشرف/أدمن/مالك (أي رتبة أعلى من عضو عادي)."""
+    if user_id == OWNER_ID:
+        return True
+
     async with pool.acquire() as conn:
         rank = await conn.fetchval(
             "SELECT rank FROM members WHERE user_id = $1",
