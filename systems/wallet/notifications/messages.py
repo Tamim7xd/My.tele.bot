@@ -3,7 +3,6 @@
 تعديل أي نص هنا لا يؤثر على أي نظام آخر.
 """
 
-
 def leaderboard_text(entries: list[tuple[int, str | None, str, int]]) -> str:
     """
     يبني نص قائمة الترتيب (الأكثر رصيداً).
@@ -15,12 +14,22 @@ def leaderboard_text(entries: list[tuple[int, str | None, str, int]]) -> str:
 
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
 
-    lines = ["💰 <b>الأكثر رصيداً</b>", "━━━━━━━━━━━━━━━"]
+    lines = ["💰 الأكثر رصيداً", "━━━━━━━━━━━━━━━", ""]
 
     for rank, username, full_name, balance in entries:
         medal = medals.get(rank, f"{rank}.")
-        username_display = f"@{username}" if username else ""
-        lines.append(f"{medal} {full_name} {username_display} — {balance:,} د.ع")
+
+        # الاسم + اليوزر
+        if username:
+            lines.append(f"{medal} {full_name} (@{username})")
+        else:
+            lines.append(f"{medal} {full_name}")
+
+        # الرصيد
+        lines.append(f"💵 {balance:,} د.ع")
+
+        # فراغ بين كل عضو
+        lines.append("")
 
     return "\n".join(lines)
 
