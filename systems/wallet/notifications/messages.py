@@ -1,23 +1,40 @@
 """
-نصوص نظام الرصيد.
-تعديل أي نص هنا لا يؤثر على أي نظام آخر.
+نظام الرصيد - نسخة VIP متطورة
+توليد لوحة المتصدرين بشكل احترافي
 """
+
+def get_level(balance: int) -> str:
+    """
+    تحديد مستوى الرصيد (VIP / متوسط / منخفض)
+    """
+    if balance >= 50000:
+        return "🟢 VIP"
+    elif balance >= 20000:
+        return "🟡 متوسط"
+    else:
+        return "🔴 منخفض"
+
 
 def leaderboard_text(entries: list[tuple[int, str | None, str, int]]) -> str:
     """
-    يبني نص قائمة الترتيب (الأكثر رصيداً).
+    بناء قائمة المتصدرين بشكل احترافي
 
-    entries: قائمة من (الترتيب, اليوزر, الاسم, الرصيد)
+    entries: (الترتيب, اليوزر, الاسم, الرصيد)
     """
     if not entries:
         return "📊 لا يوجد أعضاء مسجلين حتى الآن."
 
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
 
-    lines = ["💰 الأكثر رصيداً", "━━━━━━━━━━━━━━━", ""]
+    lines = [
+        "💰 الأكثر رصيداً",
+        "━━━━━━━━━━━━━━━",
+        ""
+    ]
 
     for rank, username, full_name, balance in entries:
         medal = medals.get(rank, f"{rank}.")
+        level = get_level(balance)
 
         # الاسم + اليوزر
         if username:
@@ -25,14 +42,14 @@ def leaderboard_text(entries: list[tuple[int, str | None, str, int]]) -> str:
         else:
             lines.append(f"{medal} {full_name}")
 
-        # الرصيد
-        lines.append(f"💵 {balance:,} د.ع")
+        # المستوى + الرصيد
+        lines.append(f"{level} | الرصيد: {balance:,} د.ع")
 
-        # فراغ بين كل عضو
-        lines.append("")
+        # فاصل أنيق بين كل عضو
+        lines.append("━━━━━━━━━━━━━━━")
 
     return "\n".join(lines)
 
 
-# يظهر إذا حاول عضو تحويل/استخدام مبلغ أكبر من رصيده
+# نص ثابت عند عدم كفاية الرصيد
 INSUFFICIENT_BALANCE = "❌ رصيدك غير كافٍ لإتمام هذه العملية."
