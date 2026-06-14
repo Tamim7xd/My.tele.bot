@@ -1,55 +1,60 @@
 """
-نظام الرصيد - نسخة VIP متطورة
-توليد لوحة المتصدرين بشكل احترافي
+Leaderboard Pro System - نسخة قوية بعد تعديل (الثروة بدل المستوى)
 """
 
-def get_level(balance: int) -> str:
-    """
-    تحديد مستوى الرصيد (VIP / متوسط / منخفض)
-    """
+def get_level(balance: int) -> tuple[str, str]:
     if balance >= 50000:
-        return "🟢 VIP"
+        return "VIP", "🟢"
     elif balance >= 20000:
-        return "🟡 متوسط"
+        return "متوسط", "🟡"
     else:
-        return "🔴 منخفض"
+        return "منخفض", "🔴"
+
+
+def get_activity(balance: int) -> str:
+    if balance >= 50000:
+        return "نشط عالي"
+    elif balance >= 20000:
+        return "نشط"
+    else:
+        return "عادي"
 
 
 def leaderboard_text(entries: list[tuple[int, str | None, str, int]]) -> str:
-    """
-    بناء قائمة المتصدرين بشكل احترافي
-
-    entries: (الترتيب, اليوزر, الاسم, الرصيد)
-    """
     if not entries:
         return "📊 لا يوجد أعضاء مسجلين حتى الآن."
 
-    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+    medals = {1: "👑", 2: "🥈", 3: "🥉"}
 
     lines = [
-        "💰 الأكثر رصيداً",
-        "━━━━━━━━━━━━━━━",
+        "🏆 لوحة المتصدرين | نظام الرتب",
+        "━━━━━━━━━━━━━━━━━━━━",
         ""
     ]
 
     for rank, username, full_name, balance in entries:
-        medal = medals.get(rank, f"{rank}.")
-        level = get_level(balance)
+        medal = medals.get(rank, f"#{rank}")
+        level_text, level_icon = get_level(balance)
+        activity = get_activity(balance)
 
-        # الاسم + اليوزر
-        if username:
-            lines.append(f"{medal} {full_name} (@{username})")
-        else:
-            lines.append(f"{medal} {full_name}")
+        lines.append(f"{medal} {full_name}")
+        lines.append(f"🆔 @{username}" if username else "🆔 غير متوفر")
 
-        # المستوى + الرصيد
-        lines.append(f"{level} | الرصيد: {balance:,} د.ع")
+        lines.append("━━━━━━━━━━━━")
 
-        # فاصل أنيق بين كل عضو
-        lines.append("━━━━━━━━━━━━━━━")
+        lines.append(f"💰 الرصيد: {balance:,} د.ع")
+
+        # 🔥 التعديل هنا فقط
+        lines.append(f"💎 الثروة: {level_text} {level_icon}")
+
+        lines.append(f"📈 الحالة: {activity}")
+
+        lines.append("━━━━━━━━━━━━")
+        lines.append("")
+
+    lines.append("⚡ يتم تحديث الترتيب تلقائياً")
 
     return "\n".join(lines)
 
 
-# نص ثابت عند عدم كفاية الرصيد
 INSUFFICIENT_BALANCE = "❌ رصيدك غير كافٍ لإتمام هذه العملية."
