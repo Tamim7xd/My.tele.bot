@@ -1,5 +1,5 @@
 """
-لوحة التحكم - نظام الحماية (كامل مع إصلاح الاستثناءات)
+لوحة التحكم - نظام الحماية (كامل مع إصلاح إضافة العضو)
 """
 
 import logging
@@ -265,7 +265,7 @@ async def deleted_mute(callback: CallbackQuery) -> None:
     await _render_member_deleted(callback, user_id, page)
 
 
-# ==================== استثناءات فردية لعضو (تم الإصلاح) ====================
+# ==================== استثناءات فردية لعضو (تم الإصلاح الكامل) ====================
 
 @router.callback_query(F.data.startswith("owner:prot_exc:"))
 async def show_member_exceptions(callback: CallbackQuery) -> None:
@@ -283,41 +283,34 @@ async def show_member_exceptions(callback: CallbackQuery) -> None:
     offset = int(parts[4]) if len(parts) > 4 else 0
 
     pool = await get_pool()
+    chat_id = callback.message.chat.id
     
-    # محاولة جلب العضو من قاعدة البيانات
+    # استخدام الدالة الجديدة ensure_member_exists
+    success = await members_queries.ensure_member_exists(
+        pool=pool,
+        user_id=user_id,
+        bot=callback.bot,
+        chat_id=chat_id
+    )
+    
+    if not success:
+        # محاولة إضافة العضو بطريقة مباشرة
+        try:
+            await members_queries.force_add_member(pool, user_id)
+            success = True
+        except Exception as e:
+            logger.error(f"فشل إضافة العضو {user_id} بطريقة مباشرة: {e}")
+    
+    if not success:
+        await callback.answer("❌ لا يمكن إضافة العضو إلى قاعدة البيانات حالياً", show_alert=True)
+        return
+    
+    # جلب العضو والاستثناءات
     member = await members_queries.get_member(pool, user_id)
     
     if member is None:
-        # إذا كان العضو غير موجود، نحاول إضافته
-        logger.warning(f"العضو {user_id} غير موجود في قاعدة البيانات، محاولة إضافته...")
-        
-        try:
-            # محاولة جلب معلومات العضو من المجموعة
-            chat_member = await callback.bot.get_chat_member(
-                chat_id=callback.message.chat.id, 
-                user_id=user_id
-            )
-            user = chat_member.user
-            
-            # إضافة العضو إلى قاعدة البيانات
-            await members_queries.add_or_update_member(
-                pool, 
-                user_id=user_id,
-                username=user.username,
-                full_name=user.full_name
-            )
-            
-            # جلب العضو مرة أخرى
-            member = await members_queries.get_member(pool, user_id)
-            
-            if member is None:
-                await callback.answer("❌ لا يمكن إضافة العضو إلى قاعدة البيانات", show_alert=True)
-                return
-                
-        except Exception as e:
-            logger.error(f"فشل إضافة العضو {user_id}: {e}")
-            await callback.answer("❌ العضو غير موجود في قاعدة البيانات ولا يمكن إضافته", show_alert=True)
-            return
+        await callback.answer("❌ لا يمكن جلب بيانات العضو", show_alert=True)
+        return
 
     # جلب الاستثناءات الحالية
     exceptions = await protection_queries.get_member_exceptions(pool, user_id)
