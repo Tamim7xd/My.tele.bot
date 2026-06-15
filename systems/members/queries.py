@@ -1,124 +1,190 @@
 """
-استعلامات قاعدة البيانات الخاصة بنظام الأعضاء.
-يستخدم جدول members المُنشأ في core/database.py
-ويستخدم جدول archive لعرض عدد المخالفات والتحذيرات.
+استعلامات قاعدة البيانات لنظام الأعضاء
 """
+
+import json
+from typing import Optional, List, Dict, Any
 
 import asyncpg
 
+from core.database import get_pool
 
-async def ensure_member_exists(
-    pool: asyncpg.Pool,
-    user_id: int,
-    username: str | None,
-    full_name: str,
-) -> None:
-    """
-    يضيف العضو لجدول members إذا لم يكن موجوداً.
-    إذا كان موجوداً، يحدّث اسمه ويوزره (قد يتغيران بمرور الوقت).
-    """
+
+async def get_member(pool: asyncpg.Pool, user_id: int) -> Optional[Dict[str, Any]]:
+    """جلب بيانات عضو معين"""
     async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO members (user_id, username, full_name)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (user_id)
-            DO UPDATE SET username = $2, full_name = $3
-            """,
-            user_id, username, full_name,
-        )
-
-
-async def increment_message_count(pool: asyncpg.Pool, user_id: int) -> int:
-    """يزيد عداد رسائل العضو بواحد ويرجع العدد الجديد."""
-    async with pool.acquire() as conn:
-        new_count = await conn.fetchval(
-            "UPDATE members SET messages_count = messages_count + 1 WHERE user_id = $1 RETURNING messages_count",
-            user_id,
-        )
-        return new_count or 0
-
-
-async def get_member(pool: asyncpg.Pool, user_id: int) -> asyncpg.Record | None:
-    """يرجع بيانات عضو واحد من جدول members."""
-    async with pool.acquire() as conn:
-        return await conn.fetchrow(
+        row = await conn.fetchrow(
             "SELECT * FROM members WHERE user_id = $1",
-            user_id,
+            user_id
         )
+    
+    if row is None:
+        return None
+    
+    return dict(row)
 
 
-async def get_warnings_count(pool: asyncpg.Pool, user_id: int) -> int:
-    """يرجع عدد التحذيرات المسجلة للعضو في الأرشيف."""
+async def get_all_members(pool: asyncpg.Pool, offset: int = 0, limit: int = 6) -> List[Dict[str, Any]]:
+    """جلب جميع الأعضاء مع ترقيم الصفحات"""
     async with pool.acquire() as conn:
-        result = await conn.fetchval(
-            "SELECT COUNT(*) FROM archive WHERE user_id = $1 AND action_type = 'warn'",
-            user_id,
+        rows = await conn.fetch(
+            """
+            SELECT user_id, username, full_name, balance, level, rank, is_muted, is_banned
+            FROM members
+            ORDER BY user_id
+            OFFSET $1 LIMIT $2
+            """,
+            offset, limit
         )
-        return result or 0
-
-
-async def get_violations_count(pool: asyncpg.Pool, user_id: int) -> int:
-    """
-    يرجع عدد المخالفات المسجلة للعضو في الأرشيف.
-    المخالفة = أي إجراء (خصم/كتم/حظر) تم تعليمه كمخالفة.
-    """
-    async with pool.acquire() as conn:
-        result = await conn.fetchval(
-            "SELECT COUNT(*) FROM archive WHERE user_id = $1 AND action_type = 'violation'",
-            user_id,
-        )
-        return result or 0
-
-
-async def get_rank(pool: asyncpg.Pool, user_id: int) -> str:
-    """يرجع رتبة العضو (member / moderator / admin / owner)."""
-    async with pool.acquire() as conn:
-        result = await conn.fetchval(
-            "SELECT rank FROM members WHERE user_id = $1",
-            user_id,
-        )
-        return result or "member"
-
-
-async def get_all_members(pool: asyncpg.Pool, offset: int = 0, limit: int = 6) -> list[asyncpg.Record]:
-    """
-    يرجع قائمة الأعضاء بشكل مقسّم (للأزرار، 6 في كل صفحة افتراضياً).
-    """
-    async with pool.acquire() as conn:
-        return await conn.fetch(
-            "SELECT user_id, username, full_name FROM members ORDER BY created_at ASC OFFSET $1 LIMIT $2",
-            offset, limit,
-        )
+    
+    return [dict(row) for row in rows]
 
 
 async def get_members_count(pool: asyncpg.Pool) -> int:
-    """يرجع العدد الإجمالي للأعضاء المسجلين."""
+    """عدد الأعضاء الكلي"""
     async with pool.acquire() as conn:
         result = await conn.fetchval("SELECT COUNT(*) FROM members")
         return result or 0
 
 
-async def search_member(pool: asyncpg.Pool, query: str) -> list[asyncpg.Record]:
-    """
-    يبحث عن عضو بالاسم أو اليوزر (بحث جزئي غير حساس لحالة الأحرف).
-    """
+async def add_or_update_member(pool: asyncpg.Pool, user_id: int, username: str | None, full_name: str) -> None:
+    """إضافة أو تحديث عضو في قاعدة البيانات"""
     async with pool.acquire() as conn:
-        return await conn.fetch(
+        await conn.execute(
             """
-            SELECT user_id, username, full_name FROM members
-            WHERE full_name ILIKE '%' || $1 || '%'
-               OR username ILIKE '%' || $1 || '%'
-            LIMIT 10
+            INSERT INTO members (user_id, username, full_name, balance, level, messages_count, rank, created_at)
+            VALUES ($1, $2, $3, 0, 1, 0, 'member', NOW())
+            ON CONFLICT (user_id) DO UPDATE 
+            SET username = EXCLUDED.username, 
+                full_name = EXCLUDED.full_name
             """,
-            query,
+            user_id, username, full_name
         )
 
 
-async def set_level(pool: asyncpg.Pool, user_id: int, level: int) -> None:
-    """يحدد مستوى عضو مباشرة (يُستخدم من لوحة التحكم)."""
+async def update_member_balance(pool: asyncpg.Pool, user_id: int, new_balance: int) -> None:
+    """تحديث رصيد العضو"""
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE members SET balance = $1 WHERE user_id = $2",
+            new_balance, user_id
+        )
+
+
+async def update_member_level(pool: asyncpg.Pool, user_id: int, new_level: int) -> None:
+    """تحديث مستوى العضو"""
     async with pool.acquire() as conn:
         await conn.execute(
             "UPDATE members SET level = $1 WHERE user_id = $2",
-            level, user_id,
+            new_level, user_id
         )
+
+
+async def update_member_rank(pool: asyncpg.Pool, user_id: int, new_rank: str) -> None:
+    """تحديث رتبة العضو"""
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE members SET rank = $1 WHERE user_id = $2",
+            new_rank, user_id
+        )
+
+
+async def increment_messages_count(pool: asyncpg.Pool, user_id: int) -> int:
+    """زيادة عدد رسائل العضو وإرجاع العدد الجديد"""
+    async with pool.acquire() as conn:
+        result = await conn.fetchval(
+            """
+            UPDATE members 
+            SET messages_count = messages_count + 1 
+            WHERE user_id = $1 
+            RETURNING messages_count
+            """,
+            user_id
+        )
+        return result or 1
+
+
+async def search_members(pool: asyncpg.Pool, search_text: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """البحث عن أعضاء بالاسم أو اليوزرنيم"""
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT user_id, username, full_name
+            FROM members
+            WHERE full_name ILIKE $1 OR username ILIKE $1
+            LIMIT $2
+            """,
+            f"%{search_text}%", limit
+        )
+    
+    return [dict(row) for row in rows]
+
+
+async def get_member_rank(pool: asyncpg.Pool, user_id: int) -> str:
+    """جلب رتبة العضو"""
+    async with pool.acquire() as conn:
+        result = await conn.fetchval(
+            "SELECT rank FROM members WHERE user_id = $1",
+            user_id
+        )
+        return result or "member"
+
+
+async def get_member_balance(pool: asyncpg.Pool, user_id: int) -> int:
+    """جلب رصيد العضو"""
+    async with pool.acquire() as conn:
+        result = await conn.fetchval(
+            "SELECT balance FROM members WHERE user_id = $1",
+            user_id
+        )
+        return result or 0
+
+
+async def get_member_level(pool: asyncpg.Pool, user_id: int) -> int:
+    """جلب مستوى العضو"""
+    async with pool.acquire() as conn:
+        result = await conn.fetchval(
+            "SELECT level FROM members WHERE user_id = $1",
+            user_id
+        )
+        return result or 1
+
+
+async def is_member_muted(pool: asyncpg.Pool, user_id: int) -> bool:
+    """التحقق إذا كان العضو مكتوماً"""
+    async with pool.acquire() as conn:
+        result = await conn.fetchval(
+            "SELECT is_muted FROM members WHERE user_id = $1",
+            user_id
+        )
+        return result or False
+
+
+async def is_member_banned(pool: asyncpg.Pool, user_id: int) -> bool:
+    """التحقق إذا كان العضو محظوراً"""
+    async with pool.acquire() as conn:
+        result = await conn.fetchval(
+            "SELECT is_banned FROM members WHERE user_id = $1",
+            user_id
+        )
+        return result or False
+
+
+async def get_muted_until(pool: asyncpg.Pool, user_id: int) -> Optional[str]:
+    """جلب تاريخ انتهاء الكتم"""
+    async with pool.acquire() as conn:
+        result = await conn.fetchval(
+            "SELECT muted_until FROM members WHERE user_id = $1",
+            user_id
+        )
+        return result
+
+
+async def get_banned_until(pool: asyncpg.Pool, user_id: int) -> Optional[str]:
+    """جلب تاريخ انتهاء الحظر"""
+    async with pool.acquire() as conn:
+        result = await conn.fetchval(
+            "SELECT banned_until FROM members WHERE user_id = $1",
+            user_id
+        )
+        return result
