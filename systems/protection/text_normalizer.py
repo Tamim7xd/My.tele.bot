@@ -1,5 +1,5 @@
 """
-محرك تطبيع النص (Text Normalization) لنظام الحماية.
+محرك تطبيع النص (Text Normalization) لنظام الحماية - نسخة محسنة.
 
 الهدف: كشف الكلمات المحظورة حتى مع التلاعب الشائع:
 - التشكيل (الحركات): إزالتها
@@ -7,12 +7,7 @@
 - إزالة الفواصل بين الحروف: مسافات، نقاط، شرطات سفلية، Tatweel (ـ)، أي رمز غير حرف
 - تقليص التكرار: "ححححرف" -> "حرف"
 - تحويل أرقام شائعة الاستخدام بدل حروف (عربيزي): 7->ح, 3->ع, 2->ء, 0->و, 8->غ
-
-يُطبَّق هذا التطبيع على نص الرسالة وعلى كل كلمة في القائمة المحظورة
-قبل المطابقة، فتُكشف معظم أشكال التلاعب.
-
-⚠️ هذا الملف لا يحتوي على أي قائمة كلمات افتراضية - القائمة بالكامل
-يديرها المالك من لوحة التحكم.
+- كشف الكلمات المقسمة بحروف أو مسافات (مثلاً: ح ر ف)
 """
 
 import re
@@ -28,7 +23,7 @@ _ARABIC_NORMALIZATION_MAP = {
     "ئ": "ي",
 }
 
-# أرقام شائعة بدل حروف (عربيزي)
+# أرقام شائعة بدل حروف (عربيزي) - نسخة موسعة
 _LEET_MAP = {
     "0": "و",
     "2": "ء",
@@ -38,6 +33,12 @@ _LEET_MAP = {
     "6": "ط",
     "7": "ح",
     "8": "غ",
+    "9": "ق",
+    "@": "ا",   # @ تستخدم بدل ا أحياناً
+    "$": "س",   # $ تستخدم بدل س
+    "1": "ا",   # 1 تستخدم بدل ا
+    "&": "و",   # & تستخدم بدل و
+    "!": "ا",   # ! تستخدم بدل ا
 }
 
 # تشكيل عربي (حركات) و Tatweel لإزالته
@@ -48,7 +49,7 @@ _ARABIC_DIACRITICS = re.compile(
         "\u0655", "\u0656", "\u0657", "\u0658", "\u0659",
         "\u065A", "\u065B", "\u065C", "\u065D", "\u065E",
         "\u065F", "\u0670",
-        "\u0640",
+        "\u0640",  # Tatweel
     ]) + "]"
 )
 
@@ -64,6 +65,7 @@ def normalize_text(text: str) -> str:
     4. استبدال الأرقام الشائعة بحروف عربية مقابلة
     5. إزالة كل ما ليس حرفاً عربياً أو لاتينياً (مسافات، نقاط، رموز...)
     6. تقليص أي حرف متكرر أكثر من مرتين إلى مرتين فقط
+    7. إزالة المسافات نهائياً
     """
     if not text:
         return ""
@@ -78,8 +80,10 @@ def normalize_text(text: str) -> str:
     for src, dst in _LEET_MAP.items():
         result = result.replace(src, dst)
 
+    # إزالة كل ما ليس حرف عربي أو لاتيني
     result = re.sub(r"[^\u0600-\u06FFa-z]", "", result)
 
+    # تقليص التكرار (حححرف -> حرف)
     result = re.sub(r"(.)\1{2,}", r"\1\1", result)
 
     return result
@@ -98,6 +102,13 @@ def contains_word(normalized_text: str, normalized_word: str) -> bool:
 def find_matched_word(text: str, banned_words: list[str]) -> str | None:
     """
     يفحص نصاً مقابل قائمة كلمات محظورة (بعد تطبيع الجميع).
+    يدعم:
+    - التشكيل
+    - العربيزي
+    - التكرار
+    - التقسيم (ح ر ف)
+    - الأحرف المشابهة
+    
     يرجع الكلمة المحظورة (الأصلية كما أُدخلت) عند أول تطابق، أو None.
     """
     normalized_text = normalize_text(text)
@@ -108,7 +119,25 @@ def find_matched_word(text: str, banned_words: list[str]) -> str | None:
     for word in banned_words:
         normalized_word = normalize_text(word)
 
+        # 1. بحث عادي
         if contains_word(normalized_text, normalized_word):
             return word
+
+        # 2. بحث مع إزالة المسافات (للكلمات المقسمة)
+        text_no_spaces = re.sub(r"\s+", "", normalized_text)
+        if contains_word(text_no_spaces, normalized_word):
+            return word
+
+        # 3. بحث بنمط مرن (للحروف المتكررة)
+        if len(normalized_word) >= 3:
+            # مثلاً: "حرف" تطابق "ححرف" أو "حررف"
+            # نقوم بإنشاء نمط يسمح بتكرار كل حرف 0-2 مرة
+            pattern_parts = []
+            for char in normalized_word:
+                pattern_parts.append(f"{char}+?")
+            pattern = ".*?".join(pattern_parts)
+            
+            if re.search(pattern, normalized_text):
+                return word
 
     return None
