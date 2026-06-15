@@ -112,105 +112,98 @@ async def _detect_violation(message: Message, settings: dict, pool, user_id: int
 
     # ===== 1. جهات الاتصال (جديد - أولوية قصوى) =====
     if message.contact is not None:
-        if await _is_violation(pool, user_id, settings, "contacts"):
-            name = message.contact.first_name
-            if message.contact.last_name:
-                name += f" {message.contact.last_name}"
-            if message.contact.phone_number:
-                name += f" | {message.contact.phone_number}"
-            return "contacts", f"جهة اتصال: {name[:100]}"
+        if settings.get("contacts", True):
+            is_exempt = await protection_queries.is_exempted(pool, user_id, "contacts")
+            if not is_exempt:
+                name = message.contact.first_name
+                if message.contact.last_name:
+                    name += f" {message.contact.last_name}"
+                if message.contact.phone_number:
+                    name += f" | {message.contact.phone_number}"
+                return "contacts", f"جهة اتصال: {name[:100]}"
 
     # ===== 2. الموقع الجغرافي =====
     if message.location is not None:
-        if await _is_violation(pool, user_id, settings, "location"):
-            lat = message.location.latitude
-            lon = message.location.longitude
-            return "location", f"📍 موقع: {lat:.4f}, {lon:.4f}"
+        if settings.get("location", True):
+            is_exempt = await protection_queries.is_exempted(pool, user_id, "location")
+            if not is_exempt:
+                lat = message.location.latitude
+                lon = message.location.longitude
+                return "location", f"📍 موقع: {lat:.4f}, {lon:.4f}"
 
     # ===== 3. الفيديو =====
     if message.video is not None:
-        if await _is_violation(pool, user_id, settings, "videos"):
-            caption = message.caption or "(فيديو بدون وصف)"
-            return "videos", f"🎥 فيديو: {caption[:100]}"
+        if settings.get("videos", True):
+            is_exempt = await protection_queries.is_exempted(pool, user_id, "videos")
+            if not is_exempt:
+                caption = message.caption or "(فيديو بدون وصف)"
+                return "videos", f"🎥 فيديو: {caption[:100]}"
 
     # ===== 4. البصمات الصوتية (voice notes) =====
     if message.voice is not None:
-        if await _is_violation(pool, user_id, settings, "voice"):
-            duration = message.voice.duration
-            return "voice", f"🎙️ بصمة صوتية ({duration} ثانية)"
+        if settings.get("voice", True):
+            is_exempt = await protection_queries.is_exempted(pool, user_id, "voice")
+            if not is_exempt:
+                duration = message.voice.duration
+                return "voice", f"🎙️ بصمة صوتية ({duration} ثانية)"
 
     # ===== 5. الملفات/المستندات =====
     if message.document is not None:
-        if await _is_violation(pool, user_id, settings, "files"):
-            file_name = message.document.file_name or "(ملف بدون اسم)"
-            file_size = message.document.file_size
-            return "files", f"📎 {file_name} ({file_size} بايت)"
+        if settings.get("files", True):
+            is_exempt = await protection_queries.is_exempted(pool, user_id, "files")
+            if not is_exempt:
+                file_name = message.document.file_name or "(ملف بدون اسم)"
+                file_size = message.document.file_size
+                return "files", f"📎 {file_name} ({file_size} بايت)"
 
     # ===== 6. الصور =====
     if message.photo is not None:
-        if await _is_violation(pool, user_id, settings, "photos"):
-            caption = message.caption or "(صورة بدون وصف)"
-            return "photos", f"🖼️ صورة: {caption[:100]}"
+        if settings.get("photos", False):
+            is_exempt = await protection_queries.is_exempted(pool, user_id, "photos")
+            if not is_exempt:
+                caption = message.caption or "(صورة بدون وصف)"
+                return "photos", f"🖼️ صورة: {caption[:100]}"
 
     # ===== 7. الملصقات/GIF =====
     if message.sticker is not None:
-        if await _is_violation(pool, user_id, settings, "stickers_gifs"):
-            sticker_emoji = message.sticker.emoji or "بدون إيموجي"
-            return "stickers_gifs", f"🎞️ ملصق: {sticker_emoji}"
+        if settings.get("stickers_gifs", False):
+            is_exempt = await protection_queries.is_exempted(pool, user_id, "stickers_gifs")
+            if not is_exempt:
+                sticker_emoji = message.sticker.emoji or "بدون إيموجي"
+                return "stickers_gifs", f"🎞️ ملصق: {sticker_emoji}"
     
     if message.animation is not None:
-        if await _is_violation(pool, user_id, settings, "stickers_gifs"):
-            caption = message.caption or "(GIF بدون وصف)"
-            return "stickers_gifs", f"🎞️ GIF: {caption[:100]}"
+        if settings.get("stickers_gifs", False):
+            is_exempt = await protection_queries.is_exempted(pool, user_id, "stickers_gifs")
+            if not is_exempt:
+                caption = message.caption or "(GIF بدون وصف)"
+                return "stickers_gifs", f"🎞️ GIF: {caption[:100]}"
 
     # ===== 8. النص: روابط + كلام مسيء =====
     text = message.text or message.caption
 
     if text:
         # الروابط
-        if await _is_violation(pool, user_id, settings, "links"):
-            url_match = _URL_PATTERN.search(text)
-            if url_match:
-                return "links", f"🔗 رابط: {url_match.group()[:100]}"
+        if settings.get("links", True):
+            is_exempt = await protection_queries.is_exempted(pool, user_id, "links")
+            if not is_exempt:
+                url_match = _URL_PATTERN.search(text)
+                if url_match:
+                    return "links", f"🔗 رابط: {url_match.group()[:100]}"
 
         # الكلام المسيء (باستخدام text_normalizer المحسن)
-        if await _is_violation(pool, user_id, settings, "bad_words"):
-            banned_words = settings.get("banned_words", [])
-            matched = find_matched_word(text, banned_words)
+        if settings.get("bad_words", True):
+            is_exempt = await protection_queries.is_exempted(pool, user_id, "bad_words")
+            if not is_exempt:
+                banned_words = settings.get("banned_words", [])
+                matched = find_matched_word(text, banned_words)
 
-            if matched:
-                # نعرض أول 100 حرف فقط من النص المخالف
-                preview = text[:100] + "..." if len(text) > 100 else text
-                return "bad_words", f"🤬 كلمة محظورة: {matched}\n📝 النص: {preview}"
+                if matched:
+                    # نعرض أول 100 حرف فقط من النص المخالف
+                    preview = text[:100] + "..." if len(text) > 100 else text
+                    return "bad_words", f"🤬 كلمة محظورة: {matched}\n📝 النص: {preview}"
 
     return None, None
-
-
-async def _is_violation(pool, user_id: int, settings: dict, feature_key: str) -> bool:
-    """
-    يتحقق إن كانت ميزة معينة محظورة عموماً، وأن العضو غير مستثنى منها.
-    
-    المنطق:
-    1. إذا كانت الميزة غير مفعلة في الإعدادات العامة → لا مخالفة
-    2. إذا كان العضو مستثنى من هذه الميزة → لا مخالفة (مسموح له)
-    3. وإلا → مخالفة
-    
-    تم إصلاح منطق الاستثناءات ليعمل بشكل صحيح.
-    """
-    # 1. هل الميزة مفعلة أصلاً في الإعدادات العامة؟
-    if not settings.get(feature_key, False):
-        return False
-
-    # 2. هل العضو مستثنى من هذه الميزة؟
-    #    الاستثناء يعني: العضو مسموح له بتجاوز الحظر
-    is_exempt = await protection_queries.is_exempted(pool, user_id, feature_key)
-    
-    if is_exempt:
-        # العضو مستثنى → لا مخالفة
-        return False
-
-    # العضو ليس مستثنى والميزة مفعلة → مخالفة
-    return True
 
 
 async def _delete_later(message: Message, delay: int) -> None:
