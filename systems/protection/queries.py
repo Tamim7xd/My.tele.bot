@@ -7,7 +7,7 @@
 {
     "links": true, "files": true, "videos": true, "voice": true,
     "location": true, "photos": false, "stickers_gifs": false,
-    "bad_words": true, "banned_words": []
+    "bad_words": true, "contacts": true, "banned_words": []
 }
 
 الاستثناءات الفردية لكل عضو تُخزَّن في عمود members.protection_exceptions (JSONB):
@@ -26,7 +26,8 @@ from core.database import get_setting, set_setting
 
 PROTECTION_SETTINGS_KEY = "protection_settings"
 
-FEATURE_KEYS = ["links", "files", "videos", "voice", "location", "photos", "stickers_gifs", "bad_words"]
+# ===== تم إضافة "contacts" =====
+FEATURE_KEYS = ["links", "files", "videos", "voice", "location", "photos", "stickers_gifs", "bad_words", "contacts"]
 
 FEATURE_LABELS = {
     "links": "🔗 الروابط",
@@ -37,6 +38,7 @@ FEATURE_LABELS = {
     "photos": "🖼️ الصور",
     "stickers_gifs": "🎞️ الملصقات/GIF",
     "bad_words": "🤬 الكلام المسيء",
+    "contacts": "📇 جهات الاتصال",  # جديد
 }
 
 DEFAULT_SETTINGS = {
@@ -48,6 +50,7 @@ DEFAULT_SETTINGS = {
     "photos": False,
     "stickers_gifs": False,
     "bad_words": True,
+    "contacts": True,  # جديد - محظور افتراضياً
     "banned_words": [],
 }
 
@@ -98,7 +101,7 @@ async def remove_banned_word(pool: asyncpg.Pool, word: str) -> list[str]:
     return banned_words
 
 
-# ===== الاستثناءات الفردية =====
+# ===== الاستثناءات الفردية (تم الإصلاح) =====
 
 async def get_member_exceptions(pool: asyncpg.Pool, user_id: int) -> dict:
     """يرجع استثناءات عضو معين (المفاتيح التي قيمتها True = مسموح له)."""
@@ -112,8 +115,11 @@ async def get_member_exceptions(pool: asyncpg.Pool, user_id: int) -> dict:
 
     if isinstance(raw, str):
         return json.loads(raw)
+    
+    if isinstance(raw, dict):
+        return raw
 
-    return raw
+    return {}
 
 
 async def toggle_member_exception(pool: asyncpg.Pool, user_id: int, feature_key: str) -> bool:
@@ -131,9 +137,26 @@ async def toggle_member_exception(pool: asyncpg.Pool, user_id: int, feature_key:
 
 
 async def is_exempted(pool: asyncpg.Pool, user_id: int, feature_key: str) -> bool:
-    """يتحقق إن كان عضو معين مستثنى من قيد ميزة معينة."""
-    exceptions = await get_member_exceptions(pool, user_id)
-    return exceptions.get(feature_key, False)
+    """
+    يتتحقق إن كان عضو معين مستثنى من قيد ميزة معينة.
+    تم الإصلاح: التعامل مع JSONB بشكل صحيح.
+    """
+    async with pool.acquire() as conn:
+        # طريقة مباشرة للاستعلام عن قيمة محددة من JSONB
+        result = await conn.fetchval(
+            """
+            SELECT protection_exceptions->>$1 
+            FROM members 
+            WHERE user_id = $2
+            """,
+            feature_key, user_id
+        )
+        
+        if result is None:
+            return False
+        
+        # result يكون "true" أو "false" كنص
+        return result.lower() == "true"
 
 
 # ===== سجل المحذوفات (protection_log) =====
