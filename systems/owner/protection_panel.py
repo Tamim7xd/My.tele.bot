@@ -1,12 +1,12 @@
 """
-لوحة التحكم - نظام الحماية (مع إصلاح الاستثناءات)
+لوحة التحكم - نظام الحماية (كامل مع إصلاح الاستثناءات)
 """
 
 import logging
 
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from core.database import get_pool
 from core.config import OWNER_ID
@@ -394,8 +394,6 @@ async def show_exceptions_help(callback: CallbackQuery) -> None:
 الاستثناءات لا تؤثر على صلاحيات الأدمن/المشرف - هم معفيون تلقائياً.
 """
 
-    # نحتاج لاستخراج user_id و offset من آخر رسالة
-    # نستخدم طريقة بسيطة: زر رجوع للقائمة الرئيسية
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🔙 رجوع للإعدادات", callback_data="owner:protection")],
