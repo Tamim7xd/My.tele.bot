@@ -1,24 +1,10 @@
 """
-نظام الحماية (protection) - استعلامات/تخزين.
-
-الإعدادات العامة (تشغيل/إيقاف كل ميزة + قائمة الكلمات المحظورة)
-تُخزَّن في جدول settings تحت مفتاح "protection_settings" كـ JSON:
-
-{
-    "links": true, "files": true, "videos": true, "voice": true,
-    "location": true, "photos": false, "stickers_gifs": false,
-    "bad_words": true, "contacts": true, "banned_words": []
-}
-
-الاستثناءات الفردية لكل عضو تُخزَّن في عمود members.protection_exceptions (JSONB):
-{"links": true, "photos": true, ...}  # true = مسموح له بتجاوز الحظر
-
-سجل المحذوفات في جدول protection_log المنفصل
-(id, user_id, violation_type, content, created_at).
+نظام الحماية - استعلامات قاعدة البيانات
 """
 
 import json
 import logging
+from typing import Dict, List, Optional
 
 import asyncpg
 
@@ -29,8 +15,11 @@ logger = logging.getLogger(__name__)
 
 PROTECTION_SETTINGS_KEY = "protection_settings"
 
-# ===== تم إضافة "contacts" =====
-FEATURE_KEYS = ["links", "files", "videos", "voice", "location", "photos", "stickers_gifs", "bad_words", "contacts"]
+# قائمة الميزات المدعومة
+FEATURE_KEYS = [
+    "links", "files", "videos", "voice", "location", 
+    "photos", "stickers_gifs", "bad_words", "contacts"
+]
 
 FEATURE_LABELS = {
     "links": "🔗 الروابط",
@@ -41,9 +30,10 @@ FEATURE_LABELS = {
     "photos": "🖼️ الصور",
     "stickers_gifs": "🎞️ الملصقات/GIF",
     "bad_words": "🤬 الكلام المسيء",
-    "contacts": "📇 جهات الاتصال",  # جديد
+    "contacts": "📇 جهات الاتصال",
 }
 
+# الإعدادات الافتراضية - تم تفعيل جميع الميزات
 DEFAULT_SETTINGS = {
     "links": True,
     "files": True,
@@ -53,168 +43,149 @@ DEFAULT_SETTINGS = {
     "photos": False,
     "stickers_gifs": False,
     "bad_words": True,
-    "contacts": True,  # جديد - محظور افتراضياً
+    "contacts": True,
     "banned_words": [],
 }
 
 
-async def get_protection_settings(pool: asyncpg.Pool) -> dict:
-    """يرجع إعدادات الحماية الحالية (مع دمج القيم الافتراضية للمفاتيح الناقصة)."""
+async def get_protection_settings(pool: asyncpg.Pool) -> Dict:
+    """جلب إعدادات الحماية"""
     settings = await get_setting(pool, PROTECTION_SETTINGS_KEY, {})
-
-    merged = dict(DEFAULT_SETTINGS)
+    
+    merged = DEFAULT_SETTINGS.copy()
     merged.update(settings)
-
+    
     return merged
 
 
-async def set_protection_settings(pool: asyncpg.Pool, settings: dict) -> None:
+async def set_protection_settings(pool: asyncpg.Pool, settings: Dict) -> None:
+    """حفظ إعدادات الحماية"""
     await set_setting(pool, PROTECTION_SETTINGS_KEY, settings)
 
 
 async def toggle_feature(pool: asyncpg.Pool, feature_key: str) -> bool:
-    """يبدّل حالة ميزة (تشغيل/إيقاف)، يرجع الحالة الجديدة."""
+    """تبديل حالة ميزة"""
     settings = await get_protection_settings(pool)
     settings[feature_key] = not settings.get(feature_key, False)
     await set_protection_settings(pool, settings)
     return settings[feature_key]
 
 
-async def add_banned_word(pool: asyncpg.Pool, word: str) -> list[str]:
+async def add_banned_word(pool: asyncpg.Pool, word: str) -> List[str]:
+    """إضافة كلمة محظورة"""
     settings = await get_protection_settings(pool)
     banned_words = settings.get("banned_words", [])
-
+    
     if word not in banned_words:
         banned_words.append(word)
         settings["banned_words"] = banned_words
         await set_protection_settings(pool, settings)
-
+    
     return banned_words
 
 
-async def remove_banned_word(pool: asyncpg.Pool, word: str) -> list[str]:
+async def remove_banned_word(pool: asyncpg.Pool, word: str) -> List[str]:
+    """حذف كلمة محظورة"""
     settings = await get_protection_settings(pool)
     banned_words = settings.get("banned_words", [])
-
+    
     if word in banned_words:
         banned_words.remove(word)
         settings["banned_words"] = banned_words
         await set_protection_settings(pool, settings)
-
+    
     return banned_words
 
 
-# ===== الاستثناءات الفردية (تم الإصلاح) =====
+# ==================== الاستثناءات الفردية ====================
 
-async def get_member_exceptions(pool: asyncpg.Pool, user_id: int) -> dict:
-    """يرجع استثناءات عضو معين (المفاتيح التي قيمتها True = مسموح له)."""
+async def get_member_exceptions(pool: asyncpg.Pool, user_id: int) -> Dict:
+    """جلب استثناءات عضو"""
     async with pool.acquire() as conn:
-        raw = await conn.fetchval(
-            "SELECT protection_exceptions FROM members WHERE user_id = $1", user_id
+        result = await conn.fetchval(
+            "SELECT protection_exceptions FROM members WHERE user_id = $1",
+            user_id
         )
-
-    if raw is None:
-        return {}
-
-    if isinstance(raw, str):
-        return json.loads(raw)
     
-    if isinstance(raw, dict):
-        return raw
-
-    return {}
+    if result is None:
+        return {}
+    
+    if isinstance(result, str):
+        return json.loads(result)
+    
+    return result or {}
 
 
 async def toggle_member_exception(pool: asyncpg.Pool, user_id: int, feature_key: str) -> bool:
-    """يبدّل استثناء عضو لميزة معينة، يرجع الحالة الجديدة."""
+    """تبديل استثناء عضو لميزة"""
     exceptions = await get_member_exceptions(pool, user_id)
     exceptions[feature_key] = not exceptions.get(feature_key, False)
-
+    
     async with pool.acquire() as conn:
         await conn.execute(
             "UPDATE members SET protection_exceptions = $1::jsonb WHERE user_id = $2",
-            json.dumps(exceptions), user_id,
+            json.dumps(exceptions), user_id
         )
-
+    
     return exceptions[feature_key]
 
 
 async def is_exempted(pool: asyncpg.Pool, user_id: int, feature_key: str) -> bool:
-    """
-    يتحقق إن كان عضو معين مستثنى من قيد ميزة معينة.
-    
-    ملاحظة: الاستثناء يكون True عندما يكون العضو مسموح له بتجاوز الحظر.
-    
-    تم الإصلاح: التعامل مع JSONB بشكل صحيح مع logging للتصحيح.
-    """
+    """التحقق من استثناء عضو لميزة معينة"""
     async with pool.acquire() as conn:
-        # طريقة مباشرة للاستعلام عن قيمة محددة من JSONB
         result = await conn.fetchval(
-            """
-            SELECT protection_exceptions->>$1 
-            FROM members 
-            WHERE user_id = $2
-            """,
+            "SELECT protection_exceptions->>$1 FROM members WHERE user_id = $2",
             feature_key, user_id
         )
-        
-        # تسجيل للتصحيح (يمكن إزالته بعد التأكد من العمل)
-        logger.info(f"is_exempted: user_id={user_id}, feature={feature_key}, result={result}")
-        
-        if result is None:
-            return False
-        
-        # result يكون نص "true" أو "false"
-        return result.lower() == "true"
+        return result == "true"
 
 
-# ===== سجل المحذوفات (protection_log) =====
+# ==================== سجل المحذوفات ====================
 
-async def log_deleted_message(pool: asyncpg.Pool, user_id: int, violation_type: str, content: str | None) -> None:
+async def log_deleted_message(pool: asyncpg.Pool, user_id: int, violation_type: str, content: Optional[str]) -> None:
+    """تسجيل رسالة محذوفة"""
     async with pool.acquire() as conn:
         await conn.execute(
             "INSERT INTO protection_log (user_id, violation_type, content) VALUES ($1, $2, $3)",
-            user_id, violation_type, content,
+            user_id, violation_type, content
         )
 
 
 async def get_violators_with_logs_count(pool: asyncpg.Pool) -> int:
-    """عدد الأعضاء الذين لديهم سجل محذوفات واحد أو أكثر."""
+    """عدد المخالفين"""
     async with pool.acquire() as conn:
-        result = await conn.fetchval(
-            "SELECT COUNT(DISTINCT user_id) FROM protection_log"
-        )
+        result = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM protection_log")
         return result or 0
 
 
-async def get_violators_with_logs_list(pool: asyncpg.Pool, offset: int = 0, limit: int = 6) -> list[asyncpg.Record]:
-    """قائمة الأعضاء الذين لديهم سجل محذوفات، مع عدد المحذوفات لكل واحد."""
+async def get_violators_with_logs_list(pool: asyncpg.Pool, offset: int = 0, limit: int = 6) -> List:
+    """قائمة المخالفين"""
     async with pool.acquire() as conn:
         return await conn.fetch(
             """
-            SELECT
-                m.user_id, m.username, m.full_name,
-                COUNT(p.id) AS deleted_count
+            SELECT m.user_id, m.username, m.full_name, COUNT(p.id) AS deleted_count
             FROM members m
             JOIN protection_log p ON p.user_id = m.user_id
             GROUP BY m.user_id, m.username, m.full_name
             ORDER BY deleted_count DESC
             OFFSET $1 LIMIT $2
             """,
-            offset, limit,
+            offset, limit
         )
 
 
 async def get_member_deleted_count(pool: asyncpg.Pool, user_id: int) -> int:
+    """عدد محذوفات عضو"""
     async with pool.acquire() as conn:
         result = await conn.fetchval(
-            "SELECT COUNT(*) FROM protection_log WHERE user_id = $1", user_id
+            "SELECT COUNT(*) FROM protection_log WHERE user_id = $1",
+            user_id
         )
         return result or 0
 
 
-async def get_member_deleted_entries(pool: asyncpg.Pool, user_id: int, offset: int = 0, limit: int = 5) -> list[asyncpg.Record]:
-    """يرجع سجلات محذوفات عضو معين، من الأحدث للأقدم."""
+async def get_member_deleted_entries(pool: asyncpg.Pool, user_id: int, offset: int = 0, limit: int = 5) -> List:
+    """سجل محذوفات عضو"""
     async with pool.acquire() as conn:
         return await conn.fetch(
             """
@@ -224,5 +195,5 @@ async def get_member_deleted_entries(pool: asyncpg.Pool, user_id: int, offset: i
             ORDER BY created_at DESC
             OFFSET $2 LIMIT $3
             """,
-            user_id, offset, limit,
+            user_id, offset, limit
         )
