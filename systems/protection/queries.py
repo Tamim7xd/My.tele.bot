@@ -18,11 +18,14 @@
 """
 
 import json
+import logging
 
 import asyncpg
 
 from core.database import get_setting, set_setting
 
+
+logger = logging.getLogger(__name__)
 
 PROTECTION_SETTINGS_KEY = "protection_settings"
 
@@ -138,8 +141,11 @@ async def toggle_member_exception(pool: asyncpg.Pool, user_id: int, feature_key:
 
 async def is_exempted(pool: asyncpg.Pool, user_id: int, feature_key: str) -> bool:
     """
-    يتتحقق إن كان عضو معين مستثنى من قيد ميزة معينة.
-    تم الإصلاح: التعامل مع JSONB بشكل صحيح.
+    يتحقق إن كان عضو معين مستثنى من قيد ميزة معينة.
+    
+    ملاحظة: الاستثناء يكون True عندما يكون العضو مسموح له بتجاوز الحظر.
+    
+    تم الإصلاح: التعامل مع JSONB بشكل صحيح مع logging للتصحيح.
     """
     async with pool.acquire() as conn:
         # طريقة مباشرة للاستعلام عن قيمة محددة من JSONB
@@ -152,10 +158,13 @@ async def is_exempted(pool: asyncpg.Pool, user_id: int, feature_key: str) -> boo
             feature_key, user_id
         )
         
+        # تسجيل للتصحيح (يمكن إزالته بعد التأكد من العمل)
+        logger.info(f"is_exempted: user_id={user_id}, feature={feature_key}, result={result}")
+        
         if result is None:
             return False
         
-        # result يكون "true" أو "false" كنص
+        # result يكون نص "true" أو "false"
         return result.lower() == "true"
 
 
