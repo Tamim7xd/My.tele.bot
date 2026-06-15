@@ -47,19 +47,75 @@ async def get_members_count(pool: asyncpg.Pool) -> int:
         return result or 0
 
 
-async def add_or_update_member(pool: asyncpg.Pool, user_id: int, username: str | None, full_name: str) -> None:
-    """إضافة أو تحديث عضو في قاعدة البيانات"""
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO members (user_id, username, full_name, balance, level, messages_count, rank, created_at)
-            VALUES ($1, $2, $3, 0, 1, 0, 'member', NOW())
-            ON CONFLICT (user_id) DO UPDATE 
-            SET username = EXCLUDED.username, 
-                full_name = EXCLUDED.full_name
-            """,
-            user_id, username, full_name
-        )
+async def add_or_update_member(pool: asyncpg.Pool, user_id: int, username: str | None, full_name: str) -> bool:
+    """
+    إضافة أو تحديث عضو في قاعدة البيانات
+    ترجع True إذا تمت العملية بنجاح، False إذا فشلت
+    """
+    try:
+        async with pool.acquire() as conn:
+            # استخدام COALESCE للتعامل مع القيم الفارغة
+            await conn.execute(
+                """
+                INSERT INTO members (user_id, username, full_name, balance, level, messages_count, rank, created_at)
+                VALUES ($1, COALESCE($2, ''), COALESCE($3, 'مستخدم'), 0, 1, 0, 'member', NOW())
+                ON CONFLICT (user_id) DO UPDATE 
+                SET username = COALESCE(EXCLUDED.username, members.username),
+                    full_name = COALESCE(EXCLUDED.full_name, members.full_name)
+                """,
+                user_id, username or '', full_name or 'مستخدم'
+            )
+        return True
+    except Exception as e:
+        print(f"خطأ في add_or_update_member: {e}")
+        return False
+
+
+async def force_add_member(pool: asyncpg.Pool, user_id: int, username: str = None, full_name: str = None) -> bool:
+    """
+    إضافة عضو بالقوة مع قيم افتراضية
+    """
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO members (user_id, username, full_name, balance, level, messages_count, rank, created_at)
+                VALUES ($1, $2, $3, 0, 1, 0, 'member', NOW())
+                ON CONFLICT (user_id) DO NOTHING
+                """,
+                user_id, username or f"user_{user_id}", full_name or f"عضو {user_id}"
+            )
+        return True
+    except Exception as e:
+        print(f"خطأ في force_add_member: {e}")
+        return False
+
+
+async def ensure_member_exists(pool: asyncpg.Pool, user_id: int, bot=None, chat_id=None) -> bool:
+    """
+    التأكد من وجود العضو في قاعدة البيانات، وإضافته إذا لم يكن موجوداً
+    """
+    # أولاً: التحقق من وجود العضو
+    member = await get_member(pool, user_id)
+    
+    if member is not None:
+        return True
+    
+    # ثانياً: محاولة جلب معلومات العضو من التيليجرام
+    username = None
+    full_name = None
+    
+    if bot and chat_id:
+        try:
+            chat_member = await bot.get_chat_member(chat_id=chat_id, user_id=user_id)
+            user = chat_member.user
+            username = user.username
+            full_name = user.full_name
+        except Exception as e:
+            print(f"فشل جلب معلومات العضو {user_id}: {e}")
+    
+    # ثالثاً: إضافة العضو
+    return await add_or_update_member(pool, user_id, username, full_name)
 
 
 async def update_member_balance(pool: asyncpg.Pool, user_id: int, new_balance: int) -> None:
