@@ -71,6 +71,9 @@ async def main() -> None:
     from systems.owner import announcements_panel
     dp.include_router(announcements_panel.router)
 
+    from systems.owner import protection_panel
+    dp.include_router(protection_panel.router)
+
     # ثانياً: الأنظمة ذات الأوامر المحددة (شرط نص) أو الفلاتر العامة
 
     from systems.moderators import moderators as moderators_system
@@ -90,6 +93,9 @@ async def main() -> None:
 
     from systems.cleanup import cleanup as cleanup_system
     dp.include_router(cleanup_system.router)
+
+    from systems.protection import protection as protection_system
+    dp.include_router(protection_system.router)
 
     from systems.announcements import announcements as announcements_system
     dp.include_router(announcements_system.router)
