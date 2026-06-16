@@ -246,10 +246,31 @@ async def deleted_warn(callback: CallbackQuery) -> None:
     page = int(page_str)
 
     pool = await get_pool()
+    member = await members_queries.get_member(pool, user_id)
+
+    if member is None:
+        await callback.answer()
+        return
 
     await moderation_queries.log_archive_entry(
         pool, user_id=user_id, action_type="warn", reason=None, replied_message=None, done_by=callback.from_user.id,
     )
+
+    from systems.members.members import GROUP_ID_KEY
+    from systems.moderation.notifications import messages as moderation_messages
+
+    group_id = await get_setting(pool, GROUP_ID_KEY)
+
+    if group_id:
+        try:
+            await callback.bot.send_message(
+                chat_id=group_id,
+                text=moderation_messages.warn_notification(
+                    member["full_name"], member["username"], None, "المالك",
+                ),
+            )
+        except Exception:
+            pass
 
     await callback.answer(messages.WARN_SUCCESS, show_alert=True)
     await _render_member_deleted(callback, user_id, page)
