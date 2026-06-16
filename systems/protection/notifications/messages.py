@@ -27,7 +27,7 @@ def settings_text(settings: dict) -> str:
     lines = ["🛡️ <b>إعدادات الحماية</b>", "━━━━━━━━━━━━━━━"]
 
     for key in FEATURE_KEYS:
-        status = "✅ محظور" if settings.get(key) else "❌ مسموح"
+        status = "✅ مسموح" if settings.get(key) else "❌ محظور"
         lines.append(f"{FEATURE_LABELS[key]}: {status}")
 
     lines.append("━━━━━━━━━━━━━━━")
