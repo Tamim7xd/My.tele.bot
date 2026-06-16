@@ -1,16 +1,12 @@
 """
-نظام الحماية (protection) - استعلامات/تخزين.
+نظام الحماية (protection) - استعلامات وتخزين (معدل).
 """
 
 import json
-
 import asyncpg
-
 from core.database import get_setting, set_setting
 
-
 PROTECTION_SETTINGS_KEY = "protection_settings"
-
 FEATURE_KEYS = ["links", "files", "videos", "voice", "location", "contact", "photos", "stickers_gifs", "bad_words"]
 
 FEATURE_LABELS = {
@@ -25,6 +21,7 @@ FEATURE_LABELS = {
     "bad_words": "🤬 الكلام المسيء",
 }
 
+# الإعدادات الافتراضية: True تعني مسموح للجميع، وعند تحويلها لـ False تصبح معطلة/محظورة
 DEFAULT_SETTINGS = {
     "links": True,
     "files": True,
@@ -32,27 +29,20 @@ DEFAULT_SETTINGS = {
     "voice": True,
     "location": True,
     "contact": True,
-    "photos": False,
-    "stickers_gifs": False,
+    "photos": True,
+    "stickers_gifs": True,
     "bad_words": True,
     "banned_words": [],
 }
 
 
 async def get_protection_settings(pool: asyncpg.Pool) -> dict:
-    """
-    يرجع إعدادات الحماية الحالية.
-    ⚠️ مهم: يجمع ONLY القيم المخزنة في DB مع الإعدادات الافتراضية
-    للمفاتيح الناقصة فقط - لا يُعيد كتابة قيم موجودة بالفعل.
-    """
     stored = await get_setting(pool, PROTECTION_SETTINGS_KEY, None)
 
     if stored is None:
-        # أول تشغيل - نحفظ القيم الافتراضية ونرجعها
         await set_setting(pool, PROTECTION_SETTINGS_KEY, DEFAULT_SETTINGS)
         return dict(DEFAULT_SETTINGS)
 
-    # دمج آمن: القيم المخزنة تتجاوز الافتراضية
     merged = dict(DEFAULT_SETTINGS)
     if isinstance(stored, dict):
         merged.update(stored)
@@ -61,24 +51,16 @@ async def get_protection_settings(pool: asyncpg.Pool) -> dict:
 
 
 async def set_protection_settings(pool: asyncpg.Pool, settings: dict) -> None:
-    """يحفظ إعدادات الحماية بالكامل (يستبدل الموجود)."""
     await set_setting(pool, PROTECTION_SETTINGS_KEY, settings)
 
 
 async def toggle_feature(pool: asyncpg.Pool, feature_key: str) -> bool:
-    """
-    يبدّل حالة ميزة واحدة (تشغيل/إيقاف).
-    ⚠️ مهم: يقرأ الإعدادات الحالية أولاً، يعدّل المفتاح المطلوب فقط،
-    ثم يحفظ الكل - بدون المساس بباقي الإعدادات.
-    يرجع الحالة الجديدة (True=محظور, False=مسموح).
-    """
+    """يبدل حالة الميزة بين المسموح (True) والمعطل (False)."""
     settings = await get_protection_settings(pool)
-
-    current = settings.get(feature_key, DEFAULT_SETTINGS.get(feature_key, False))
+    current = settings.get(feature_key, DEFAULT_SETTINGS.get(feature_key, True))
     settings[feature_key] = not current
 
     await set_protection_settings(pool, settings)
-
     return settings[feature_key]
 
 
@@ -106,10 +88,10 @@ async def remove_banned_word(pool: asyncpg.Pool, word: str) -> list[str]:
     return banned_words
 
 
-# ===== الاستثناءات الفردية =====
+# ===== استثناءات الأعضاء الفردية =====
 
 async def get_member_exceptions(pool: asyncpg.Pool, user_id: int) -> dict:
-    """يرجع استثناءات عضو معين (True = مسموح له بتجاوز الحظر)."""
+    """إرجاع استثناءات العضو (True تعني أنه مستثنى ومسموح له الإرسال دائماً)"""
     async with pool.acquire() as conn:
         raw = await conn.fetchval(
             "SELECT protection_exceptions FROM members WHERE user_id = $1", user_id
@@ -132,9 +114,9 @@ async def get_member_exceptions(pool: asyncpg.Pool, user_id: int) -> dict:
 
 async def toggle_member_exception(pool: asyncpg.Pool, user_id: int, feature_key: str) -> bool:
     """
-    يبدّل استثناء عضو لميزة معينة.
-    True = مسموح له بتجاوز الحظر، False = يخضع للإعداد العام.
-    يرجع الحالة الجديدة.
+    تبديل استثناء العضو:
+    True = مستثنى (يمكنه الإرسال حتى لو عُطلت الميزة عاماً).
+    False = غير مستثنى (يخضع للتعطيل العام).
     """
     exceptions = await get_member_exceptions(pool, user_id)
     exceptions[feature_key] = not exceptions.get(feature_key, False)
@@ -149,12 +131,12 @@ async def toggle_member_exception(pool: asyncpg.Pool, user_id: int, feature_key:
 
 
 async def is_exempted(pool: asyncpg.Pool, user_id: int, feature_key: str) -> bool:
-    """يتحقق إن كان عضو معين مستثنى من قيد ميزة معينة."""
+    """التحقق مما إذا كان العضو يملك استثناءً نشطاً لميزة معينة (True = نعم مستثنى)"""
     exceptions = await get_member_exceptions(pool, user_id)
     return exceptions.get(feature_key, False)
 
 
-# ===== سجل المحذوفات (protection_log) =====
+# ===== سجل المحذوفات =====
 
 async def log_deleted_message(pool: asyncpg.Pool, user_id: int, violation_type: str, content: str | None) -> None:
     async with pool.acquire() as conn:
@@ -166,9 +148,7 @@ async def log_deleted_message(pool: asyncpg.Pool, user_id: int, violation_type: 
 
 async def get_violators_with_logs_count(pool: asyncpg.Pool) -> int:
     async with pool.acquire() as conn:
-        result = await conn.fetchval(
-            "SELECT COUNT(DISTINCT user_id) FROM protection_log"
-        )
+        result = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM protection_log")
         return result or 0
 
 
@@ -176,9 +156,7 @@ async def get_violators_with_logs_list(pool: asyncpg.Pool, offset: int = 0, limi
     async with pool.acquire() as conn:
         return await conn.fetch(
             """
-            SELECT
-                m.user_id, m.username, m.full_name,
-                COUNT(p.id) AS deleted_count
+            SELECT m.user_id, m.username, m.full_name, COUNT(p.id) AS deleted_count
             FROM members m
             JOIN protection_log p ON p.user_id = m.user_id
             GROUP BY m.user_id, m.username, m.full_name
@@ -191,9 +169,7 @@ async def get_violators_with_logs_list(pool: asyncpg.Pool, offset: int = 0, limi
 
 async def get_member_deleted_count(pool: asyncpg.Pool, user_id: int) -> int:
     async with pool.acquire() as conn:
-        result = await conn.fetchval(
-            "SELECT COUNT(*) FROM protection_log WHERE user_id = $1", user_id
-        )
+        result = await conn.fetchval("SELECT COUNT(*) FROM protection_log WHERE user_id = $1", user_id)
         return result or 0
 
 
@@ -209,3 +185,4 @@ async def get_member_deleted_entries(pool: asyncpg.Pool, user_id: int, offset: i
             """,
             user_id, offset, limit,
         )
+
