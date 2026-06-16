@@ -84,9 +84,8 @@ async def show_account(message: Message) -> None:
     warnings_count = await queries.get_warnings_count(pool, target_user.id)
     violations_count = await queries.get_violations_count(pool, target_user.id)
 
-    # games_played / games_won سيتم ربطها مستقبلاً مع نظام الألعاب
-    games_played = 0
-    games_won = 0
+    games_played = member["games_played"]
+    games_won = member["games_won"]
 
     text = messages.account_card_text(
         full_name=member["full_name"],
@@ -163,3 +162,4 @@ async def _auto_delete(command_message: Message, response_message: Message) -> N
         await response_message.delete()
     except Exception:
         pass
+
