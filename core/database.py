@@ -1,100 +1,51 @@
 """
 الاتصال بقاعدة بيانات PostgreSQL وإنشاء الجداول الأساسية.
+كل نظام يمكنه إضافة جداوله الخاصة هنا أو في ملف منفصل لاحقاً،
+دون التأثير على الجداول الأخرى.
 """
 
 import asyncpg
 from core.config import DATABASE_URL
 
+
+# المتغير العام الذي يحمل اتصال (pool) قاعدة البيانات
 db_pool: asyncpg.Pool | None = None
-
-# ═══════════════════════════════════════
-# الصلاحيات الافتراضية
-# ═══════════════════════════════════════
-DEFAULT_PERMISSIONS = [
-    ("ban", "🚫 حظر عضو", "حظر عضو من المجموعة", "moderation", "🚫"),
-    ("unban", "✅ فك الحظر", "فك حظر عن عضو", "moderation", "✅"),
-    ("mute", "🔇 كتم عضو", "كتم عضو مؤقتاً", "moderation", "🔇"),
-    ("unmute", "🔊 فك الكتم", "فك كتم عن عضو", "moderation", "🔊"),
-    ("warn", "⚠️ تحذير", "إعطاء تحذير لعضو", "moderation", "⚠️"),
-    ("kick", "👢 طرد", "طرد عضو من المجموعة", "moderation", "👢"),
-    ("cleanup", "🧹 تنظيف", "تنظيف وحذف الرسائل", "systems", "🧹"),
-    ("protection", "🛡️ الحماية", "إدارة إعدادات الحماية", "systems", "🛡️"),
-    ("announcements", "📢 إعلانات", "إرسال إعلانات للمجموعة", "systems", "📢"),
-    ("moderation", "⚖️ الإشراف", "إدارة الإشراف والعقوبات", "systems", "⚖️"),
-    ("manage_settings", "⚙️ إعدادات", "تعديل إعدادات البوت", "admin", "⚙️"),
-    ("manage_ranks", "👑 العضويات", "إضافة/تعديل العضويات", "admin", "👑"),
-    ("manage_staff", "👥 الطاقم", "ترقية/تنزيل المشرفين", "admin", "👥"),
-    ("view_logs", "📋 السجلات", "مشاهدة سجل الأرشيف", "admin", "📋"),
-    ("view_stats", "📊 الإحصائيات", "مشاهدة إحصائيات المجموعة", "admin", "📊"),
-    ("give_points", "💰 إعطاء نقاط", "إضافة رصيد لعضو", "economy", "💰"),
-    ("take_points", "💸 خصم نقاط", "خصم رصيد من عضو", "economy", "💸"),
-    ("manage_rewards", "🎁 المكافآت", "إنشاء/تعديل المكافآت", "economy", "🎁"),
-    ("wallet", "💳 المحفظة", "الوصول لنظام المحفظة", "economy", "💳"),
-    ("leaderboard", "🏆 المتصدرين", "عرض لوحة المتصدرين", "economy", "🏆"),
-    ("pin_messages", "📌 تثبيت", "تثبيت/فك تثبيت رسائل", "content", "📌"),
-    ("delete_messages", "🗑️ حذف", "حذف رسائل الأعضاء", "content", "🗑️"),
-    ("edit_messages", "✏️ تعديل", "تعديل رسائل البوت", "content", "✏️"),
-    ("bypass_protection", "🔓 تجاوز", "تجاوز قوانين الحماية", "special", "🔓"),
-    ("use_ai", "🤖 الذكاء", "استخدام Gemini AI", "special", "🤖"),
-    ("owner_panel", "🔐 لوحة المالك", "الوصول الكامل للوحة التحكم", "special", "🔐"),
-]
-
-DEFAULT_RANKS = [
-    (1, 'owner', '👑 المالك', 1, '#FFD700', '["*"]', True, 0),
-    (2, 'admin', '🔥 الأدمن', 2, '#FF4444', '["ban","unban","mute","unmute","warn","kick","cleanup","protection","announcements","moderation","manage_settings","manage_staff","view_logs","view_stats","give_points","take_points","manage_rewards","wallet","leaderboard","pin_messages","delete_messages","edit_messages","bypass_protection","use_ai"]', True, 0),
-    (3, 'moderator', '⚡ المشرف', 3, '#4488FF', '["mute","unmute","warn","kick","cleanup","delete_messages","view_stats","leaderboard"]', True, 0),
-    (4, 'member', '👤 العضو', 4, '#888888', '[]', True, 0),
-]
 
 
 async def connect_db() -> asyncpg.Pool:
+    """
+    ينشئ اتصال (pool) بقاعدة البيانات ويخزنه في db_pool،
+    ثم يقوم بإنشاء الجداول الأساسية إن لم تكن موجودة.
+    """
     global db_pool
+
     db_pool = await asyncpg.create_pool(dsn=DATABASE_URL)
+
     await create_tables()
-    await init_permissions()
-    await init_default_ranks()
+
     return db_pool
 
 
 async def create_tables() -> None:
+    """
+    ينشئ الجداول الأساسية المشتركة بين الأنظمة.
+    كل جدول له IF NOT EXISTS لتجنب الأخطاء عند إعادة التشغيل.
+    """
     assert db_pool is not None
 
     async with db_pool.acquire() as conn:
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS ranks (
-                id SERIAL PRIMARY KEY,
-                name TEXT UNIQUE NOT NULL,
-                display_name TEXT NOT NULL,
-                level INTEGER NOT NULL UNIQUE,
-                color TEXT DEFAULT '#FFFFFF',
-                icon TEXT DEFAULT '👤',
-                permissions JSONB DEFAULT '[]',
-                is_protected BOOLEAN DEFAULT FALSE,
-                created_by INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-        """)
 
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS permissions_list (
-                id SERIAL PRIMARY KEY,
-                code TEXT UNIQUE NOT NULL,
-                display_name TEXT NOT NULL,
-                description TEXT,
-                category TEXT DEFAULT 'general',
-                icon TEXT DEFAULT '⚡'
-            );
-        """)
-
-        await conn.execute("""
+        # ===== جدول الأعضاء (الجدول المركزي المشترك) =====
+        await conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS members (
                 user_id BIGINT PRIMARY KEY,
                 username TEXT,
                 full_name TEXT,
                 balance BIGINT DEFAULT 0,
                 level INTEGER DEFAULT 1,
-                rank_id INTEGER REFERENCES ranks(id) DEFAULT 4,
                 messages_count INTEGER DEFAULT 0,
+                rank TEXT DEFAULT 'member',
                 permissions JSONB DEFAULT '{}',
                 protection_exceptions JSONB DEFAULT '{}',
                 is_banned BOOLEAN DEFAULT FALSE,
@@ -103,9 +54,17 @@ async def create_tables() -> None:
                 banned_until TIMESTAMP,
                 created_at TIMESTAMP DEFAULT NOW()
             );
-        """)
+            """
+        )
 
-        await conn.execute("""
+        # ===== ترقية الجداول القديمة (إضافة أعمدة جديدة إن لم تكن موجودة) =====
+        await conn.execute(
+            "ALTER TABLE members ADD COLUMN IF NOT EXISTS protection_exceptions JSONB DEFAULT '{}'"
+        )
+
+        # ===== جدول الأرشيف (سجل الإجراءات لكل عضو) =====
+        await conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS archive (
                 id SERIAL PRIMARY KEY,
                 user_id BIGINT REFERENCES members(user_id),
@@ -116,9 +75,13 @@ async def create_tables() -> None:
                 done_by BIGINT,
                 created_at TIMESTAMP DEFAULT NOW()
             );
-        """)
+            """
+        )
 
-        await conn.execute("""
+        # ===== جدول سجل المحذوفات (نظام protection) =====
+        # منعزل تماماً عن archive - يخزن كل رسالة حذفها نظام الحماية
+        await conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS protection_log (
                 id SERIAL PRIMARY KEY,
                 user_id BIGINT REFERENCES members(user_id),
@@ -126,169 +89,73 @@ async def create_tables() -> None:
                 content TEXT,
                 created_at TIMESTAMP DEFAULT NOW()
             );
-        """)
+            """
+        )
 
-        await conn.execute("""
+        # ===== جدول الإعدادات (key-value مشترك بين كل الأنظمة) =====
+        # تُستخدم لتخزين القيم القابلة للتعديل من لوحة التحكم
+        # (مثل قيم الخصم/المكافأة، عدد رسائل التنظيف، إلخ)
+        # بدون الحاجة لتعديل الكود أو إعادة النشر.
+        await conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value JSONB NOT NULL
             );
-        """)
-
-        await conn.execute("""
-            ALTER TABLE members ADD COLUMN IF NOT EXISTS rank_id INTEGER REFERENCES ranks(id) DEFAULT 4
-        """)
-        await conn.execute("""
-            ALTER TABLE members DROP COLUMN IF EXISTS rank
-        """)
-
-
-async def init_permissions() -> None:
-    assert db_pool is not None
-    async with db_pool.acquire() as conn:
-        for perm in DEFAULT_PERMISSIONS:
-            await conn.execute("""
-                INSERT INTO permissions_list (code, display_name, description, category, icon)
-                VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT (code) DO NOTHING
-            """, perm[0], perm[1], perm[2], perm[3], perm[4])
-
-
-async def init_default_ranks() -> None:
-    assert db_pool is not None
-    async with db_pool.acquire() as conn:
-        for rank in DEFAULT_RANKS:
-            await conn.execute("""
-                INSERT INTO ranks (id, name, display_name, level, color, permissions, is_protected, created_by)
-                VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
-                ON CONFLICT (id) DO NOTHING
-            """, *rank)
-
-
-async def get_ranks(pool: asyncpg.Pool) -> list:
-    rows = await pool.fetch("SELECT * FROM ranks ORDER BY level ASC")
-    return [dict(row) for row in rows]
-
-
-async def get_rank_by_id(pool: asyncpg.Pool, rank_id: int) -> dict | None:
-    row = await pool.fetchrow("SELECT * FROM ranks WHERE id = $1", rank_id)
-    return dict(row) if row else None
-
-
-async def get_rank_by_name(pool: asyncpg.Pool, name: str) -> dict | None:
-    row = await pool.fetchrow("SELECT * FROM ranks WHERE name = $1", name)
-    return dict(row) if row else None
-
-
-async def add_rank(pool: asyncpg.Pool, name: str, display_name: str, level: int,
-                   color: str, icon: str, permissions: list, created_by: int = 0) -> int:
-    row = await pool.fetchrow("""
-        INSERT INTO ranks (name, display_name, level, color, icon, permissions, created_by)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
-        RETURNING id
-    """, name, display_name, level, color, icon, permissions, created_by)
-    return row['id']
-
-
-async def update_rank(pool: asyncpg.Pool, rank_id: int, **kwargs) -> None:
-    allowed = ['display_name', 'color', 'icon', 'permissions']
-    updates = {k: v for k, v in kwargs.items() if k in allowed}
-    if not updates:
-        return
-    set_clause = ", ".join([f"{k} = ${i+2}" for i, k in enumerate(updates.keys())])
-    values = list(updates.values())
-    await pool.execute(f"""
-        UPDATE ranks SET {set_clause} WHERE id = $1 AND is_protected = FALSE
-    """, rank_id, *values)
-
-
-async def delete_rank(pool: asyncpg.Pool, rank_id: int) -> bool:
-    result = await pool.execute("""
-        DELETE FROM ranks WHERE id = $1 AND is_protected = FALSE
-    """, rank_id)
-    return "DELETE 1" in result
-
-
-async def get_rank_permissions(pool: asyncpg.Pool, rank_id: int) -> list:
-    row = await pool.fetchrow("SELECT permissions FROM ranks WHERE id = $1", rank_id)
-    if row and row['permissions']:
-        return row['permissions'] if isinstance(row['permissions'], list) else []
-    return []
-
-
-async def set_rank_permissions(pool: asyncpg.Pool, rank_id: int, permissions: list) -> None:
-    await pool.execute("""
-        UPDATE ranks SET permissions = $1::jsonb WHERE id = $2
-    """, permissions, rank_id)
-
-
-async def get_permissions_list(pool: asyncpg.Pool, category: str = None) -> list:
-    if category:
-        rows = await pool.fetch("SELECT * FROM permissions_list WHERE category = $1 ORDER BY display_name", category)
-    else:
-        rows = await pool.fetch("SELECT * FROM permissions_list ORDER BY category, display_name")
-    return [dict(row) for row in rows]
-
-
-async def get_permission_by_code(pool: asyncpg.Pool, code: str) -> dict | None:
-    row = await pool.fetchrow("SELECT * FROM permissions_list WHERE code = $1", code)
-    return dict(row) if row else None
-
-
-async def has_permission(pool: asyncpg.Pool, user_id: int, permission: str) -> bool:
-    member = await pool.fetchrow("""
-        SELECT r.permissions FROM members m
-        JOIN ranks r ON m.rank_id = r.id
-        WHERE m.user_id = $1
-    """, user_id)
-    if not member:
-        return False
-    perms = member['permissions'] or []
-    if "*" in perms:
-        return True
-    return permission in perms
-
-
-async def get_user_rank(pool: asyncpg.Pool, user_id: int) -> dict | None:
-    row = await pool.fetchrow("""
-        SELECT r.* FROM members m
-        JOIN ranks r ON m.rank_id = r.id
-        WHERE m.user_id = $1
-    """, user_id)
-    return dict(row) if row else None
-
-
-async def set_user_rank(pool: asyncpg.Pool, user_id: int, rank_id: int, promoted_by: int = None) -> None:
-    await pool.execute("""
-        UPDATE members SET rank_id = $1 WHERE user_id = $2
-    """, rank_id, user_id)
-    await pool.execute("""
-        INSERT INTO archive (user_id, action_type, reason, done_by)
-        VALUES ($1, 'rank_change', $2, $3)
-    """, user_id, f"تغيير عضوية إلى {rank_id}", promoted_by)
+            """
+        )
 
 
 async def get_setting(pool: asyncpg.Pool, key: str, default=None):
+    """
+    يرجع قيمة إعداد معين من جدول settings.
+    إذا لم يكن موجوداً، يرجع default المُمرر.
+
+    القيمة تُخزَّن وتُسترجع كـ JSON، لذا يمكن أن تكون
+    عدداً، نصاً، قائمة، أو dict.
+    """
     import json
-    row = await pool.fetchrow("SELECT value FROM settings WHERE key = $1", key)
-    if row is None:
+
+    async with pool.acquire() as conn:
+        raw = await conn.fetchval("SELECT value FROM settings WHERE key = $1", key)
+
+    if raw is None:
         return default
-    return row['value']
+
+    if isinstance(raw, str):
+        return json.loads(raw)
+
+    return raw
 
 
 async def set_setting(pool: asyncpg.Pool, key: str, value) -> None:
+    """
+    يحدد/يحدّث قيمة إعداد معين في جدول settings.
+    value يمكن أن يكون عدداً، نصاً، قائمة، أو dict (يُخزَّن كـ JSON).
+    """
     import json
-    await pool.execute("""
-        INSERT INTO settings (key, value) VALUES ($1, $2::jsonb)
-        ON CONFLICT (key) DO UPDATE SET value = $2::jsonb
-    """, key, json.dumps(value))
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO settings (key, value)
+            VALUES ($1, $2::jsonb)
+            ON CONFLICT (key) DO UPDATE SET value = $2::jsonb
+            """,
+            key, json.dumps(value),
+        )
 
 
 async def get_pool() -> asyncpg.Pool:
-    assert db_pool is not None, "لم يتم الاتصال بقاعدة البيانات"
+    """
+    يرجع اتصال قاعدة البيانات الحالي.
+    تستخدمه جميع الأنظمة للوصول لقاعدة البيانات.
+    """
+    assert db_pool is not None, "قاعدة البيانات غير متصلة - تأكد من استدعاء connect_db أولاً"
     return db_pool
 
 
 async def close_db() -> None:
+    """يغلق الاتصال بقاعدة البيانات عند إيقاف البوت."""
     if db_pool is not None:
         await db_pool.close()
