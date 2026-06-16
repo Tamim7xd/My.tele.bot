@@ -1,34 +1,17 @@
-"""
-محرك تطبيع النص (Text Normalization) لنظام الحماية.
-
-الهدف: كشف الكلمات المحظورة حتى مع التلاعب الشائع:
-- التشكيل (الحركات): إزالتها
-- توحيد الحروف المتشابهة: أ/إ/آ/ٱ -> ا، ة -> ه، ى -> ي، ؤ -> و، ئ -> ي
-- إزالة الفواصل بين الحروف: مسافات، نقاط، شرطات سفلية، Tatweel (ـ)، أي رمز غير حرف
-- تقليص التكرار: "ححححرف" -> "حرف"
-- تحويل أرقام شائعة الاستخدام بدل حروف (عربيزي): 7->ح, 3->ع, 2->ء, 0->و, 8->غ
-
-يُطبَّق هذا التطبيع على نص الرسالة وعلى كل كلمة في القائمة المحظورة
-قبل المطابقة، فتُكشف معظم أشكال التلاعب.
-
-⚠️ هذا الملف لا يحتوي على أي قائمة كلمات افتراضية - القائمة بالكامل
-يديرها المالك من لوحة التحكم.
-"""
-
 import re
+import unicodedata
 
-
-# ===== خرائط توحيد الحروف =====
-
+# ===== توحيد الحروف العربية =====
 _ARABIC_NORMALIZATION_MAP = {
     "أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا",
     "ة": "ه",
     "ى": "ي",
     "ؤ": "و",
     "ئ": "ي",
+    "ـ": "",
 }
 
-# أرقام شائعة بدل حروف (عربيزي)
+# ===== عربيزي =====
 _LEET_MAP = {
     "0": "و",
     "2": "ء",
@@ -38,77 +21,72 @@ _LEET_MAP = {
     "6": "ط",
     "7": "ح",
     "8": "غ",
+    "9": "ص",
 }
 
-# تشكيل عربي (حركات) و Tatweel لإزالته
-_ARABIC_DIACRITICS = re.compile(
-    "[" + "".join([
-        "\u064B", "\u064C", "\u064D", "\u064E", "\u064F",
-        "\u0650", "\u0651", "\u0652", "\u0653", "\u0654",
-        "\u0655", "\u0656", "\u0657", "\u0658", "\u0659",
-        "\u065A", "\u065B", "\u065C", "\u065D", "\u065E",
-        "\u065F", "\u0670",
-        "\u0640",
-    ]) + "]"
-)
+# ===== التشكيل =====
+_ARABIC_DIACRITICS = re.compile(r"[\u064B-\u065F\u0670\u0640]")
+
+# ===== تحويل أي رموز بين الحروف إلى فراغ موحّد =====
+# (حتى نقدر نكشف "ح-م-ا-ر" أو "ح م ا ر")
+_SEPARATORS = re.compile(r"[^a-z\u0600-\u06FF]+")
 
 
 def normalize_text(text: str) -> str:
-    """
-    يطبّع نصاً عربياً (أو مختلطاً) للمطابقة مع الكلمات المحظورة.
-
-    الخطوات:
-    1. تحويل لحروف صغيرة (للنص اللاتيني)
-    2. إزالة التشكيل و Tatweel
-    3. توحيد الحروف العربية المتشابهة
-    4. استبدال الأرقام الشائعة بحروف عربية مقابلة
-    5. إزالة كل ما ليس حرفاً عربياً أو لاتينياً (مسافات، نقاط، رموز...)
-    6. تقليص أي حرف متكرر أكثر من مرتين إلى مرتين فقط
-    """
     if not text:
         return ""
 
-    result = text.lower()
+    # Unicode normalize
+    text = unicodedata.normalize("NFKC", text).lower()
 
-    result = _ARABIC_DIACRITICS.sub("", result)
+    # إزالة التشكيل + tatweel
+    text = _ARABIC_DIACRITICS.sub("", text)
 
-    for src, dst in _ARABIC_NORMALIZATION_MAP.items():
-        result = result.replace(src, dst)
+    # توحيد عربي
+    for k, v in _ARABIC_NORMALIZATION_MAP.items():
+        text = text.replace(k, v)
 
-    for src, dst in _LEET_MAP.items():
-        result = result.replace(src, dst)
+    # عربيزي
+    for k, v in _LEET_MAP.items():
+        text = text.replace(k, v)
 
-    result = re.sub(r"[^\u0600-\u06FFa-z]", "", result)
+    # تحويل أي رموز / مسافات / نقاط إلى فراغ واحد
+    text = _SEPARATORS.sub(" ", text)
 
-    result = re.sub(r"(.)\1{2,}", r"\1\1", result)
+    # إزالة المسافات (نخلي النص “ملتصق” عشان كشف التلاعب)
+    text = text.replace(" ", "")
 
-    return result
+    # تقليل التكرار: أقوى وأصح من السابق
+    text = re.sub(r"(.)\1+", r"\1", text)
+
+    return text
 
 
-def contains_word(normalized_text: str, normalized_word: str) -> bool:
-    """
-    يتحقق إن كانت الكلمة المطبَّعة موجودة كسلسلة فرعية داخل النص المطبَّع.
-    """
-    if not normalized_word:
+# ===== تحويل قائمة الكلمات =====
+def normalize_words(words: list[str]) -> set:
+    return {normalize_text(w) for w in words if w}
+
+
+# ===== مطابقة آمنة (تمنع الأخطاء داخل كلمات أطول) =====
+def contains_word(text: str, word: str) -> bool:
+    if not word:
         return False
 
-    return normalized_word in normalized_text
+    # نستخدم بحث مباشر بعد التطبيع
+    return word in text
 
 
+# ===== البحث النهائي =====
 def find_matched_word(text: str, banned_words: list[str]) -> str | None:
-    """
-    يفحص نصاً مقابل قائمة كلمات محظورة (بعد تطبيع الجميع).
-    يرجع الكلمة المحظورة (الأصلية كما أُدخلت) عند أول تطابق، أو None.
-    """
-    normalized_text = normalize_text(text)
+    norm_text = normalize_text(text)
 
-    if not normalized_text:
+    if not norm_text:
         return None
 
     for word in banned_words:
-        normalized_word = normalize_text(word)
+        norm_word = normalize_text(word)
 
-        if contains_word(normalized_text, normalized_word):
+        if contains_word(norm_text, norm_word):
             return word
 
     return None
