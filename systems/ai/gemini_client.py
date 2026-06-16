@@ -16,13 +16,13 @@ import aiohttp
 from core.config import GEMINI_API_KEY
 
 
-GEMINI_MODEL = "gemini-flash-latest"
+GEMINI_MODEL = "gemini-flash-lite-latest"
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 
 SYSTEM_INSTRUCTION = (
     "انت مساعد ذكي تتكلم باللهجة العراقية فقط، دايماً وبكل ردودك، مهما كان السؤال أو اللغة المستخدمة بيه. "
-    "جاوب بشكل نص فقط، مختصر ومفيد، وبدون رموز Markdown زائدة. "
+    "جاوب بشكل نص فقط، قصير ومباشر (جملتين أو ثلاثة بالأكثر إلا إذا طلب الشخص تفصيل أكثر)، وبدون رموز Markdown زائدة. "
     "ممنوع نهائياً ترسل أو تذكر أي رابط (URL) أو عنوان موقع إلكتروني بأي شكل، حتى لو طلب منك المستخدم ذلك - "
     "بهذه الحالة قل بأدب إنك ما تقدر ترسل روابط. "
     "ممنوع نهائياً تذكر أو ترسل أي موقع جغرافي حقيقي (إحداثيات، خط طول وعرض، أو رابط خرائط) - "
@@ -50,7 +50,7 @@ async def ask_gemini(question: str) -> str | None:
         ],
         "generationConfig": {
             "temperature": 0.9,
-            "maxOutputTokens": 500,
+            "maxOutputTokens": 250,
         },
     }
 
