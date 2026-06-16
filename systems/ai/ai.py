@@ -60,18 +60,16 @@ async def handle_ai_trigger(message: Message) -> None:
         await message.reply(messages.EMPTY_QUESTION)
         return
 
-    thinking = await message.reply(messages.THINKING_TEXT)
-
     answer = await ask_gemini(question)
 
     if answer is None:
-        await thinking.edit_text(messages.ERROR_TEXT)
+        await message.reply(messages.ERROR_TEXT)
         return
 
     safe_answer = sanitize_response(answer)
 
     if not safe_answer:
-        await thinking.edit_text(messages.ERROR_TEXT)
+        await message.reply(messages.ERROR_TEXT)
         return
 
-    await thinking.edit_text(safe_answer)
+    await message.reply(safe_answer)
