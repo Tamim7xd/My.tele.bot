@@ -1,28 +1,57 @@
 """
-أدوات مساعدة مشتركة لـ لوحة التحكم.
-
-parse_number: يحوّل نصاً مثل "1.000" أو "5.000.000" أو "1000"
-إلى رقم صحيح (int)، عبر إزالة النقاط المستخدمة كفواصل آلاف.
-
-تُستخدم في كل مكان يُطلب فيه إدخال رقم من المالك في اللوحة
-(تعديل الرصيد، إضافة قيمة خصم/مكافأة، تعديل عدد التنظيف، تعديل المستوى).
+أدوات مساعدة للوحة التحكم - التحقق من الصلاحيات
 """
 
+from functools import wraps
+from aiogram.types import CallbackQuery, Message
 
-def parse_number(text: str) -> int | None:
-    """
-    يحوّل نصاً إلى رقم صحيح موجب (أو صفر)، يدعم النقاط كفواصل آلاف.
+from core.config import OWNER_ID
+from core.database import has_permission, get_pool
 
-    أمثلة:
-        "1000"      -> 1000
-        "1.000"     -> 1000
-        "5.000.000" -> 5000000
-        "abc"       -> None
-        "-5"        -> None (لا يدعم الأرقام السالبة)
-    """
-    cleaned = text.strip().replace(".", "").replace(",", "")
 
-    if not cleaned.isdigit():
-        return None
+def owner_only(handler):
+    """مُزيّن: فقط المالك يمكنه الوصول"""
+    @wraps(handler)
+    async def wrapper(event, *args, **kwargs):
+        user_id = event.from_user.id
+        
+        if user_id != OWNER_ID:
+            if isinstance(event, CallbackQuery):
+                await event.answer("⛔ فقط المالك!", show_alert=True)
+            else:
+                await event.answer("⛔ ليس لديك صلاحية!")
+            return
+        
+        return await handler(event, *args, **kwargs)
+    return wrapper
 
-    return int(cleaned)
+
+def require_permission(permission: str):
+    """مُزيّن: يتطلب صلاحية معينة"""
+    def decorator(handler):
+        @wraps(handler)
+        async def wrapper(event, *args, **kwargs):
+            user_id = event.from_user.id
+            
+            # المالك يملك كل شيء
+            if user_id == OWNER_ID:
+                return await handler(event, *args, **kwargs)
+            
+            pool = await get_pool()
+            has = await has_permission(pool, user_id, permission)
+            
+            if not has:
+                if isinstance(event, CallbackQuery):
+                    await event.answer(f"⛔ تحتاج صلاحية: {permission}", show_alert=True)
+                else:
+                    await event.answer(f"⛔ ليس لديك صلاحية: {permission}")
+                return
+            
+            return await handler(event, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def admin_only(handler):
+    """مُزيّن: الأدمن فأعلى (manage_staff)"""
+    return require_permission("manage_staff")(handler)
