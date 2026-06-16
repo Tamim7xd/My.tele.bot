@@ -7,7 +7,6 @@
 
 from aiogram.fsm.state import State, StatesGroup
 
-
 class OwnerStates(StatesGroup):
     # انتظار إدخال قيم جديدة للخصم/المكافأة (4 أرقام مفصولة بفواصل)
     waiting_reward_amounts = State()
@@ -42,3 +41,20 @@ class OwnerStates(StatesGroup):
 
     # نظام الحماية (protection)
     waiting_protection_word = State()
+
+    # ═══════════════════════════════════════
+    # ═══ نظام العضويات الإدارية ═══
+    # ═══════════════════════════════════════
+    
+    # ─── إضافة عضوية جديدة ───
+    waiting_rank_name = State()          # الاسم التقني
+    waiting_rank_display = State()       # الاسم المعروض
+    waiting_rank_level = State()         # المستوى الهرمي
+    waiting_rank_color = State()         # اللون
+    waiting_rank_icon = State()          # الأيقونة
+    waiting_rank_permissions = State()   # الصلاحيات
+    
+    # ─── تعديل عضوية ───
+    waiting_rank_edit_name = State()     # تعديل الاسم
+    waiting_rank_edit_color = State()    # تعديل اللون
+    waiting_rank_edit_icon = State()     # تعديل الأيقونة
