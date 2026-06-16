@@ -3,8 +3,7 @@
 تعديل أي نص هنا لا يؤثر على أي نظام آخر.
 """
 
-
-MAIN_MENU_TEXT = "👑 <b>لوحة التحكم</b>\n━━━━━━━━━━━━━━━\nاختر النظام الذي تريد إدارته:"
+MAIN_MENU_TEXT = "👑 **لوحة التحكم**\n━━━━━━━━━━━━━━━\nاختر النظام الذي تريد إدارته:"
 
 NO_PERMISSION = "❌ هذا الأمر للمالك فقط."
 
@@ -13,7 +12,7 @@ CANCELLED = "❌ تم الإلغاء."
 
 def moderators_text(admin_count: int, moderator_count: int) -> str:
     return (
-        f"👮 <b>نظام الإداريين</b>\n"
+        f"👮 **نظام الإداريين**\n"
         f"━━━━━━━━━━━━━━━\n"
         f"🛡️ الأدمن: {admin_count}\n"
         f"🔧 المشرفين: {moderator_count}\n"
@@ -35,9 +34,9 @@ def staff_list_text(rank: str, total: int) -> str:
     icon = "🛡️" if rank == "admin" else "🔧"
 
     if total == 0:
-        return f"{icon} <b>{rank_display}</b>\n━━━━━━━━━━━━━━━\nلا يوجد أعضاء بهذه الرتبة حالياً."
+        return f"{icon} **{rank_display}**\n━━━━━━━━━━━━━━━\nلا يوجد أعضاء بهذه الرتبة حالياً."
 
-    return f"{icon} <b>{rank_display}</b> ({total})\n━━━━━━━━━━━━━━━\nاختر عضواً:"
+    return f"{icon} **{rank_display}** ({total})\n━━━━━━━━━━━━━━━\nاختر عضواً:"
 
 
 def staff_member_text(full_name: str, username: str | None, rank: str) -> str:
@@ -45,7 +44,7 @@ def staff_member_text(full_name: str, username: str | None, rank: str) -> str:
     rank_display = RANK_NAMES.get(rank, rank)
 
     return (
-        f"👤 <b>{full_name}</b> | {username_display}\n"
+        f"👤 **{full_name}** | {username_display}\n"
         f"━━━━━━━━━━━━━━━\n"
         f"🎖️ الرتبة: {rank_display}\n"
         f"━━━━━━━━━━━━━━━\n"
@@ -57,7 +56,7 @@ def permissions_text(full_name: str, rank: str) -> str:
     rank_display = RANK_NAMES.get(rank, rank)
 
     return (
-        f"⚙️ <b>صلاحيات {full_name}</b>\n"
+        f"⚙️ **صلاحيات {full_name}**\n"
         f"━━━━━━━━━━━━━━━\n"
         f"الرتبة: {rank_display}\n"
         f"━━━━━━━━━━━━━━━\n"
@@ -77,7 +76,7 @@ def demoted_text(full_name: str, new_rank: str) -> str:
 
 def wallet_text(total_balance: int, top_count: int) -> str:
     return (
-        f"💰 <b>نظام الرصيد</b>\n"
+        f"💰 **نظام الرصيد**\n"
         f"━━━━━━━━━━━━━━━\n"
         f"💵 إجمالي الرصيد المتداول: {total_balance:,} د.ع\n"
         f"🏆 عدد المتصدرين: {top_count}\n"
@@ -88,7 +87,7 @@ def wallet_text(total_balance: int, top_count: int) -> str:
 
 def rewards_text(amounts: list[int]) -> str:
     return (
-        f"💸 <b>نظام الخصم والمكافأة</b>\n"
+        f"💸 **نظام الخصم والمكافأة**\n"
         f"━━━━━━━━━━━━━━━\n"
         f"القيم الحالية أدناه. اضغط 🗑️ للحذف، أو ➕ للإضافة:"
     )
@@ -96,7 +95,7 @@ def rewards_text(amounts: list[int]) -> str:
 
 def cleanup_text(cleanup_range: int) -> str:
     return (
-        f"🧹 <b>نظام التنظيف</b>\n"
+        f"🧹 **نظام التنظيف**\n"
         f"━━━━━━━━━━━━━━━\n"
         f"🔢 عدد الرسائل لكل تنظيف: {cleanup_range}\n"
         f"━━━━━━━━━━━━━━━\n"
@@ -117,9 +116,9 @@ def cleanup_updated_text(cleanup_range: int) -> str:
 
 def members_list_text(total: int) -> str:
     if total == 0:
-        return "👥 <b>الأعضاء</b>\n━━━━━━━━━━━━━━━\nلا يوجد أعضاء مسجلين حتى الآن."
+        return "👥 **الأعضاء**\n━━━━━━━━━━━━━━━\nلا يوجد أعضاء مسجلين حتى الآن."
 
-    return f"👥 <b>الأعضاء</b> ({total})\n━━━━━━━━━━━━━━━\nاختر عضواً، أو استخدم 🔍 البحث:"
+    return f"👥 **الأعضاء** ({total})\n━━━━━━━━━━━━━━━\nاختر عضواً، أو استخدم 🔍 البحث:"
 
 
 def member_page_text(
@@ -144,7 +143,7 @@ def member_page_text(
     status_block = ("\n".join(status_lines) + "\n") if status_lines else ""
 
     return (
-        f"👤 <b>{full_name}</b> | {username_display}\n"
+        f"👤 **{full_name}** | {username_display}\n"
         f"━━━━━━━━━━━━━━━\n"
         f"🎖️ الرتبة: {rank_display}\n"
         f"📊 المستوى: {level}\n"
@@ -158,7 +157,7 @@ def member_page_text(
 
 def balance_edit_text(full_name: str, balance: int) -> str:
     return (
-        f"💰 <b>تعديل رصيد {full_name}</b>\n"
+        f"💰 **تعديل رصيد {full_name}**\n"
         f"━━━━━━━━━━━━━━━\n"
         f"الرصيد الحالي: {balance:,} د.ع\n"
         f"━━━━━━━━━━━━━━━\n"
@@ -205,7 +204,7 @@ def reward_amount_removed_text(amounts: list[int]) -> str:
 
 def level_edit_text(full_name: str, level: int) -> str:
     return (
-        f"📊 <b>تعديل مستوى {full_name}</b>\n"
+        f"📊 **تعديل مستوى {full_name}**\n"
         f"━━━━━━━━━━━━━━━\n"
         f"المستوى الحالي: {level}\n"
         f"━━━━━━━━━━━━━━━\n"
@@ -225,11 +224,11 @@ def level_updated_text(full_name: str, new_level: int) -> str:
 # ===== نصوص moderation من اللوحة =====
 
 def member_mute_category_text(full_name: str) -> str:
-    return f"🔇 <b>كتم {full_name}</b>\n━━━━━━━━━━━━━━━\nاختر فئة المدة:"
+    return f"🔇 **كتم {full_name}**\n━━━━━━━━━━━━━━━\nاختر فئة المدة:"
 
 
 def member_ban_category_text(full_name: str) -> str:
-    return f"🚫 <b>حظر {full_name}</b>\n━━━━━━━━━━━━━━━\nاختر فئة المدة:"
+    return f"🚫 **حظر {full_name}**\n━━━━━━━━━━━━━━━\nاختر فئة المدة:"
 
 
 def member_duration_list_text(full_name: str, action_label: str) -> str:
@@ -264,7 +263,7 @@ def member_warn_applied_text(full_name: str) -> str:
 
 def levels_settings_text(tier_1_5: int, tier_6_plus: int, reward: int) -> str:
     return (
-        f"📊 <b>نظام المستويات</b>\n"
+        f"📊 **نظام المستويات**\n"
         f"━━━━━━━━━━━━━━━\n"
         f"📈 المستويات 2-5: {tier_1_5} رسالة لكل مستوى\n"
         f"📈 المستوى 6+: {tier_6_plus} رسالة لكل مستوى\n"
@@ -290,3 +289,368 @@ def levels_updated_text(tier_1_5: int, tier_6_plus: int, reward: int) -> str:
         f"📈 المستوى 6+: {tier_6_plus} رسالة\n"
         f"🎁 المكافأة: {reward:,} د.ع"
     )
+
+
+# ═══════════════════════════════════════
+# ═══ نصوص نظام العضويات الإدارية ═══
+# ═══════════════════════════════════════
+
+RANK_NAMES_NEW = {
+    "owner": "👑 المالك",
+    "admin": "🔥 الأدمن",
+    "moderator": "⚡ المشرف",
+    "member": "👤 العضو",
+}
+
+
+def ranks_main_text(ranks: list) -> str:
+    """نص القائمة الرئيسية للعضويات"""
+    text = "👑 **إدارة العضويات الإدارية**\n━━━━━━━━━━━━━━━\n"
+    text += "📊 **الترتيب الهرمي:** (الرقم الأصغر = أعلى صلاحية)\n\n"
+    
+    for rank in ranks:
+        protected = "🔒" if rank['is_protected'] else ""
+        perms_count = len(rank['permissions']) if rank['permissions'] else 0
+        text += f"{rank['icon']} **{rank['display_name']}** {protected}\n"
+        text += f"├ المستوى: {rank['level']}\n"
+        text += f"├ الصلاحيات: {perms_count}\n"
+        text += f"└ اللون: `{rank['color']}`\n\n"
+    
+    return text
+
+
+def ranks_main_keyboard(ranks: list) -> InlineKeyboardMarkup:
+    """لوحة القائمة الرئيسية للعضويات"""
+    from aiogram.types import InlineKeyboardButton
+    
+    builder = InlineKeyboardBuilder()
+    
+    for rank in ranks:
+        protected = "🔒" if rank['is_protected'] else ""
+        builder.button(
+            text=f"{protected} {rank['icon']} {rank['display_name']}",
+            callback_data=f"owner:rank:view:{rank['id']}"
+        )
+    
+    builder.button(text="➕ إضافة عضوية جديدة", callback_data="owner:rank:add")
+    builder.button(text="🔙 رجوع للوحة التحكم", callback_data="owner:main")
+    builder.adjust(1)
+    
+    return builder.as_markup()
+
+
+def rank_details_text(rank: dict, all_perms: list, rank_perms: list) -> str:
+    """نص تفاصيل عضوية"""
+    cat_names = {
+        'moderation': '🛡️ الإشراف',
+        'systems': '⚙️ الأنظمة',
+        'admin': '⚙️ الإدارة',
+        'economy': '💰 الاقتصاد',
+        'content': '📝 المحتوى',
+        'special': '⭐ خاص'
+    }
+    
+    text = f"{rank['icon']} **{rank['display_name']}**\n\n"
+    text += f"📋 **المعلومات:**\n"
+    text += f"├ الاسم التقني: `{rank['name']}`\n"
+    text += f"├ المستوى: {rank['level']}\n"
+    text += f"├ اللون: `{rank['color']}`\n"
+    text += f"├ الأيقونة: {rank['icon']}\n"
+    text += f"└ محمية: {'نعم 🔒' if rank['is_protected'] else 'لا'}\n\n"
+    
+    text += f"⚡ **الصلاحيات ({len(rank_perms)}):**\n"
+    
+    # تجميع حسب التصنيف
+    categories = {}
+    for perm in all_perms:
+        cat = perm['category']
+        if cat not in categories:
+            categories[cat] = []
+        categories[cat].append(perm)
+    
+    for cat_name, perms in categories.items():
+        cat_perms = [p for p in perms if p['code'] in rank_perms]
+        if cat_perms:
+            emoji = cat_names.get(cat_name, '📌')
+            text += f"\n{emoji} **{cat_name.upper()}:**\n"
+            for perm in cat_perms:
+                text += f"  ✓ {perm['icon']} {perm['display_name']}\n"
+    
+    return text
+
+
+def rank_details_keyboard(rank: dict) -> InlineKeyboardMarkup:
+    """لوحة تفاصيل عضوية"""
+    builder = InlineKeyboardBuilder()
+    
+    if not rank['is_protected']:
+        builder.button(text="✏️ تعديل", callback_data=f"owner:rank:edit:{rank['id']}")
+        builder.button(text="⚡ الصلاحيات", callback_data=f"owner:rank:perms:{rank['id']}")
+        builder.button(text="🗑️ حذف", callback_data=f"owner:rank:delete:{rank['id']}")
+    
+    builder.button(text="🔙 رجوع للقائمة", callback_data="owner:ranks")
+    builder.adjust(1)
+    
+    return builder.as_markup()
+
+
+# ─── إضافة عضوية ───
+
+RANK_ADD_NAME_PROMPT = (
+    "➕ **إضافة عضوية إدارية جديدة**\n\n"
+    "📝 **الخطوة 1/5:** أرسل الاسم التقني (بالإنجليزية)\n"
+    "مثال: `super_mod` أو `helper`\n\n"
+    "⚠️ هذا الاسم يُستخدم داخلياً ولا يُعرض للأعضاء."
+)
+
+RANK_ADD_NAME_INVALID = "❌ الاسم يجب أن يحتوي على أحرف إنجليزية وأرقام و _ فقط"
+
+RANK_ADD_NAME_EXISTS = "❌ هذا الاسم مستخدم بالفعل!"
+
+RANK_ADD_DISPLAY_PROMPT = (
+    "✅ تم حفظ الاسم التقني\n\n"
+    "📝 **الخطوة 2/5:** أرسل الاسم المعروض (بالعربية)\n"
+    "مثال: `🌟 المساعد المميز`"
+)
+
+
+def rank_add_level_prompt(ranks: list) -> str:
+    """نطلب المستوى الهرمي"""
+    text = "📊 **الخطوة 3/5:** اختر المستوى الهرمي\n\n"
+    text += "🔢 **المستويات الحالية:**\n"
+    for r in ranks:
+        text += f"  المستوى {r['level']}: {r['display_name']}\n"
+    
+    text += "\n✏️ أرسل رقم المستوى الجديد (1-100):\n"
+    text += "💡 **ملاحظة:** الرقم الأصغر = أعلى صلاحية"
+    return text
+
+
+RANK_ADD_LEVEL_INVALID = "❌ أرسل رقم صحيح بين 1 و 100"
+
+
+def rank_add_level_exists(level: int, existing: list) -> str:
+    """المستوى مستخدم"""
+    available = [l for l in range(1, 101) if l not in existing][:15]
+    return (
+        f"⚠️ المستوى {level} مستخدم!\n"
+        f"المستويات المتاحة: {available}\n"
+        f"أرسل مستوى آخر:"
+    )
+
+
+RANK_ADD_COLOR_PROMPT = (
+    "🎨 **الخطوة 4/5:** اختر لون العضوية\n\n"
+    "أرسل كود HEX أو اختر من القائمة:"
+)
+
+RANK_ADD_ICON_PROMPT = (
+    "🎯 **الخطوة 5/5:** اختر أيقونة العضوية\n\n"
+    "أرسل إيموجي واحد:"
+)
+
+RANK_ADD_ICON_INVALID = "❌ أرسل إيموجي واحد فقط!"
+
+
+def rank_add_permissions_text(display_name: str) -> str:
+    """نطلب اختيار الصلاحيات"""
+    return (
+        f"✅ **تم إنشاء العضوية!**\n\n"
+        f"🎯 **{display_name}**\n"
+        f"الآن اختر الصلاحيات:"
+    )
+
+
+# ─── تعديل عضوية ───
+
+def rank_edit_text(rank: dict) -> str:
+    """نص تعديل عضوية"""
+    return (
+        f"✏️ **تعديل: {rank['display_name']}**\n\n"
+        f"اختر ما تريد تعديله:"
+    )
+
+
+def rank_edit_keyboard(rank_id: int) -> InlineKeyboardMarkup:
+    """لوحة تعديل عضوية"""
+    builder = InlineKeyboardBuilder()
+    
+    builder.button(text="✏️ تعديل الاسم", callback_data=f"owner:rank:edit_name:{rank_id}")
+    builder.button(text="🎨 تعديل اللون", callback_data=f"owner:rank:edit_color:{rank_id}")
+    builder.button(text="🎯 تعديل الأيقونة", callback_data=f"owner:rank:edit_icon:{rank_id}")
+    builder.button(text="⚡ الصلاحيات", callback_data=f"owner:rank:perms:{rank_id}")
+    builder.button(text="🔙 رجوع", callback_data=f"owner:rank:view:{rank_id}")
+    builder.adjust(1)
+    
+    return builder.as_markup()
+
+
+RANK_EDIT_NAME_PROMPT = "✏️ **تغيير الاسم المعروض**\n\nأرسل الاسم الجديد:"
+
+RANK_EDIT_NAME_SUCCESS = "✅ تم تعديل الاسم بنجاح!"
+
+
+# ─── صلاحيات ───
+
+def rank_permissions_text(rank: dict, current_perms: list) -> str:
+    """نص صلاحيات عضوية"""
+    return (
+        f"⚡ **صلاحيات: {rank['display_name']}**\n\n"
+        f"الصلاحيات الحالية: {len(current_perms)}\n\n"
+        f"اختر الصلاحيات:"
+    )
+
+
+def permissions_selector_keyboard(rank_id: int, current_perms: list, all_perms: list) -> InlineKeyboardMarkup:
+    """محدد الصلاحيات"""
+    builder = InlineKeyboardBuilder()
+    
+    # تجميع حسب التصنيف
+    categories = {}
+    for perm in all_perms:
+        cat = perm['category']
+        if cat not in categories:
+            categories[cat] = []
+        categories[cat].append(perm)
+    
+    cat_names = {
+        'moderation': '🛡️ الإشراف',
+        'systems': '⚙️ الأنظمة',
+        'admin': '⚙️ الإدارة',
+        'economy': '💰 الاقتصاد',
+        'content': '📝 المحتوى',
+        'special': '⭐ خاص'
+    }
+    
+    for cat_name, perms in categories.items():
+        display = cat_names.get(cat_name, cat_name)
+        builder.button(text=f"─── {display} ───", callback_data="ignore")
+        
+        for perm in perms:
+            is_active = perm['code'] in current_perms
+            check = "✅" if is_active else "⬜"
+            builder.button(
+                text=f"{check} {perm['icon']} {perm['display_name']}",
+                callback_data=f"owner:rank:toggle_perm:{rank_id}:{perm['code']}"
+            )
+    
+    builder.button(text="💾 حفظ الصلاحيات", callback_data=f"owner:rank:save_perms:{rank_id}")
+    builder.button(text="🔙 رجوع", callback_data=f"owner:rank:view:{rank_id}")
+    builder.adjust(1)
+    
+    return builder.as_markup()
+
+
+def rank_permissions_saved(rank: dict, perms: list) -> str:
+    """تم حفظ الصلاحيات"""
+    return (
+        f"💾 **تم حفظ الصلاحيات!**\n\n"
+        f"{rank['icon']} {rank['display_name']}\n"
+        f"الصلاحيات: {len(perms)}"
+    )
+
+
+def back_to_rank_keyboard(rank_id: int) -> InlineKeyboardMarkup:
+    """رجوع لصفحة العضوية"""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔙 رجوع للعضوية", callback_data=f"owner:rank:view:{rank_id}")
+    return builder.as_markup()
+
+
+# ─── حذف ───
+
+def rank_delete_confirm_text(rank: dict) -> str:
+    """تأكيد حذف"""
+    return (
+        f"⚠️ **تأكيد الحذف**\n\n"
+        f"هل تريد حذف: {rank['icon']} {rank['display_name']}؟\n\n"
+        f"❌ **تحذير:** الأعضاء بهذه العضوية سيتم نقلهم للعضو العادي!"
+    )
+
+
+def rank_delete_confirm_keyboard(rank_id: int) -> InlineKeyboardMarkup:
+    """تأكيد الحذف"""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ نعم، احذف", callback_data=f"owner:rank:confirm_delete:{rank_id}")
+    builder.button(text="❌ لا، تراجع", callback_data=f"owner:rank:view:{rank_id}")
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+RANK_DELETE_SUCCESS = (
+    "✅ **تم حذف العضوية!**\n"
+    "تم نقل الأعضاء للعضوية العادية."
+)
+
+
+def back_to_ranks_keyboard() -> InlineKeyboardMarkup:
+    """رجوع للقائمة"""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔙 رجوع للعضويات", callback_data="owner:ranks")
+    return builder.as_markup()
+
+
+# ─── إشعارات المجموعة ───
+
+def group_promoted_text(user_id: int, old_rank: str, new_rank: str) -> str:
+    """ترقية"""
+    return f"⬆️ تم ترقية العضو إلى {new_rank} 🎉"
+
+def group_demoted_text(user_id: int, old_rank: str, new_rank: str) -> str:
+    """تخفيض"""
+    return f"⬇️ تم تخفيض العضو إلى {new_rank}"
+
+def group_rank_changed_text(user_id: int, old_rank: str, new_rank: str) -> str:
+    """تغيير عام"""
+    return f"🔄 تم تغيير عضوية العضو من {old_rank} إلى {new_rank}"
+
+
+# ─── أزرار مساعدة ───
+
+def cancel_keyboard() -> InlineKeyboardMarkup:
+    """إلغاء"""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="❌ إلغاء", callback_data="owner:ranks")
+    return builder.as_markup()
+
+
+def colors_keyboard() -> InlineKeyboardMarkup:
+    """ألوان جاهزة"""
+    builder = InlineKeyboardBuilder()
+    
+    colors = [
+        ("🔴 أحمر", "#FF4444"),
+        ("🟢 أخضر", "#44FF44"),
+        ("🔵 أزرق", "#4444FF"),
+        ("🟡 أصفر", "#FFFF44"),
+        ("🟣 بنفسجي", "#AA44FF"),
+        ("🟠 برتقالي", "#FF8844"),
+        ("⚪ فضي", "#C0C0C0"),
+        ("🌟 ذهبي", "#FFD700"),
+        ("⚫ أسود", "#333333"),
+        ("🩷 وردي", "#FF69B4"),
+    ]
+    
+    for name, code in colors:
+        builder.button(text=name, callback_data=f"owner:rank:color:{code}")
+    
+    builder.button(text="❌ إلغاء", callback_data="owner:ranks")
+    builder.adjust(2)
+    
+    return builder.as_markup()
+
+
+def icons_keyboard() -> InlineKeyboardMarkup:
+    """أيقونات جاهزة"""
+    builder = InlineKeyboardBuilder()
+    
+    icons = ["👤", "⭐", "🌟", "💎", "🏆", "👑", "🎖️", "🛡️", "⚔️", "🔥", 
+             "⚡", "🎯", "🚀", "💪", "🦁", "🦅", "🐉", "❤️", "💚", "💙"]
+    
+    for icon in icons:
+        builder.button(text=icon, callback_data=f"owner:rank:icon:{icon}")
+    
+    builder.button(text="❌ إلغاء", callback_data="owner:ranks")
+    builder.adjust(5)
+    
+    return builder.as_markup()
