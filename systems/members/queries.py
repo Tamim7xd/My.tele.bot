@@ -122,3 +122,45 @@ async def set_level(pool: asyncpg.Pool, user_id: int, level: int) -> None:
             "UPDATE members SET level = $1 WHERE user_id = $2",
             level, user_id,
         )
+
+
+async def increment_games_played(pool: asyncpg.Pool, user_id: int) -> None:
+    """يزيد عداد الألعاب المشارك بها لعضو."""
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE members SET games_played = games_played + 1 WHERE user_id = $1",
+            user_id,
+        )
+
+
+async def increment_games_won(pool: asyncpg.Pool, user_id: int) -> None:
+    """يزيد عداد الألعاب التي فاز بها عضو."""
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE members SET games_won = games_won + 1 WHERE user_id = $1",
+            user_id,
+        )
+
+
+async def can_play_game(pool: asyncpg.Pool, user_id: int, cooldown_seconds: int) -> bool:
+    """يتحقق إن كان العضو يستطيع فتح لعبة جديدة (تجاوز فترة الانتظار)."""
+    async with pool.acquire() as conn:
+        last_game_at = await conn.fetchval(
+            "SELECT last_game_at FROM members WHERE user_id = $1", user_id
+        )
+
+    if last_game_at is None:
+        return True
+
+    from datetime import datetime, timedelta
+    return datetime.utcnow() >= last_game_at + timedelta(seconds=cooldown_seconds)
+
+
+async def update_last_game_at(pool: asyncpg.Pool, user_id: int) -> None:
+    """يحدّث وقت آخر لعبة فتحها عضو (لحساب فترة الانتظار)."""
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE members SET last_game_at = NOW() WHERE user_id = $1",
+            user_id,
+        )
+
