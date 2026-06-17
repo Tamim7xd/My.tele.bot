@@ -74,6 +74,9 @@ async def main() -> None:
     from systems.owner import protection_panel
     dp.include_router(protection_panel.router)
 
+    from systems.owner import games_panel
+    dp.include_router(games_panel.router)
+
     # ثانياً: الأنظمة ذات الأوامر المحددة (شرط نص) أو الفلاتر العامة
 
     from systems.moderators import moderators as moderators_system
@@ -143,3 +146,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+
