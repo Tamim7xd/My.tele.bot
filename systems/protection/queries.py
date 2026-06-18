@@ -1,59 +1,188 @@
+"""
+نظام الحماية (protection) - استعلامات وتخزين (معدل).
+"""
 
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from core.config import Config
+import json
+import asyncpg
+from core.database import get_setting, set_setting
 
-# الذاكرة المؤقتة (الكاش) في رام البوت لتسريع العمليات
-PROTECTION_CACHE = {}
+PROTECTION_SETTINGS_KEY = "protection_settings"
+FEATURE_KEYS = ["links", "files", "videos", "voice", "location", "contact", "photos", "stickers_gifs", "bad_words"]
 
-def get_cached_protection_settings(chat_id):
-    """جلب الإعدادات من الكاش، وإذا لم تكن موجودة يجلبها من قاعدة البيانات ويخزنها"""
-    if chat_id not in PROTECTION_CACHE:
-        # هنا يتم جلب البيانات الفسيولوجية الأصلية من DB لأول مرة فقط
-        PROTECTION_CACHE[chat_id] = {
-            "enabled": True,
-            "ai_enabled": True,
-            "strictness": "Medium",
-            "blocked_words": ["مخرب", "سبام"]
-        }
-    return PROTECTION_CACHE[chat_id]
+FEATURE_LABELS = {
+    "links": "🔗 الروابط",
+    "files": "📎 الملفات",
+    "videos": "🎥 الفيديو",
+    "voice": "🎙️ البصمات الصوتية",
+    "location": "📍 الموقع",
+    "contact": "📞 جهات الاتصال",
+    "photos": "🖼️ الصور",
+    "stickers_gifs": "🎞️ الملصقات/GIF",
+    "bad_words": "🤬 الكلام المسيء",
+}
 
-def log_to_advanced_archive(bot, message, reason):
-    """إرسال التقرير للأرشيف مع أزرار التحكم السريع للمالك"""
-    archive_id = Config.OWNER_ARCHIVE_ID
-    
-    report = (
-        f"⚙️ **تنبيه أرشيف الحماية المتقدم**\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 **المستخدِم:** {message.from_user.first_name} (`{message.from_user.id}`)\n"
-        f"📍 **الجروب:** {message.chat.title} (`{message.chat.id}`)\n"
-        f"🔍 **السبب:** {reason}\n"
-        f"📝 **النص المحذوف:**\n`{message.text}`\n"
-        f"━━━━━━━━━━━━━━━━━━━"
-    )
-    
-    # إنشاء الأزرار التفاعلية الخاصة بالأرشيف
-    markup = InlineKeyboardMarkup()
-    markup.row(
-        InlineKeyboardButton("➕ حظر الكلمة تلقائياً", callback_data=f"arch_block_{message.chat.id}_{message.message_id}"),
-        InlineKeyboardButton("↩️ استعادة الرسالة للجروب", callback_data=f"arch_restore_{message.chat.id}")
-    )
-    
-    try:
-        bot.send_message(archive_id, report, parse_mode="Markdown", reply_markup=markup)
-    except Exception as e:
-        print(f"خطأ إرسال الأرشيف المتقدم: {e}")
+# الإعدادات الافتراضية: True تعني مسموح للجميع، وعند تحويلها لـ False تصبح معطلة/محظورة
+DEFAULT_SETTINGS = {
+    "links": True,
+    "files": True,
+    "videos": True,
+    "voice": True,
+    "location": True,
+    "contact": True,
+    "photos": True,
+    "stickers_gifs": True,
+    "bad_words": True,
+    "banned_words": [],
+}
 
-def handle_archive_action_callbacks(bot, call):
-    """معالجة أزرار الأرشيف الذكية (إضافة للكاش/استعادة)"""
-    data = call.data
-    
-    if data.startswith("arch_block_"):
-        _, _, chat_id, msg_id = data.split("_")
-        # منطق استخراج الكلمة وإضافتها لقائمة الكاش وقاعدة البيانات فوراً
-        bot.answer_callback_query(call.id, "✅ تم إدراج الكلمة في القائمة السوداء وتحديث الكاش!")
-        bot.edit_message_caption(chat_id=call.message.chat.id, message_id=call.message.message_id, caption=call.message.text + "\n\n [🔒 تم حظر الكلمة بنجاح]")
-        
-    elif data.startswith("arch_restore_"):
-        chat_id = data.split("_")[2]
-        # منطق إعادة إرسال الرسالة إلى المجموعة الأصلية كميزة تراجع عن الحذف
-        bot.answer_callback_query(call.id, "↩️ تم إعادة إرسال الرسالة للجروب والاعتذار للعضو.")
+
+async def get_protection_settings(pool: asyncpg.Pool) -> dict:
+    stored = await get_setting(pool, PROTECTION_SETTINGS_KEY, None)
+
+    if stored is None:
+        await set_setting(pool, PROTECTION_SETTINGS_KEY, DEFAULT_SETTINGS)
+        return dict(DEFAULT_SETTINGS)
+
+    merged = dict(DEFAULT_SETTINGS)
+    if isinstance(stored, dict):
+        merged.update(stored)
+
+    return merged
+
+
+async def set_protection_settings(pool: asyncpg.Pool, settings: dict) -> None:
+    await set_setting(pool, PROTECTION_SETTINGS_KEY, settings)
+
+
+async def toggle_feature(pool: asyncpg.Pool, feature_key: str) -> bool:
+    """يبدل حالة الميزة بين المسموح (True) والمعطل (False)."""
+    settings = await get_protection_settings(pool)
+    current = settings.get(feature_key, DEFAULT_SETTINGS.get(feature_key, True))
+    settings[feature_key] = not current
+
+    await set_protection_settings(pool, settings)
+    return settings[feature_key]
+
+
+async def add_banned_word(pool: asyncpg.Pool, word: str) -> list[str]:
+    settings = await get_protection_settings(pool)
+    banned_words = settings.get("banned_words", [])
+
+    if word not in banned_words:
+        banned_words.append(word)
+        settings["banned_words"] = banned_words
+        await set_protection_settings(pool, settings)
+
+    return banned_words
+
+
+async def remove_banned_word(pool: asyncpg.Pool, word: str) -> list[str]:
+    settings = await get_protection_settings(pool)
+    banned_words = settings.get("banned_words", [])
+
+    if word in banned_words:
+        banned_words.remove(word)
+        settings["banned_words"] = banned_words
+        await set_protection_settings(pool, settings)
+
+    return banned_words
+
+
+# ===== استثناءات الأعضاء الفردية =====
+
+async def get_member_exceptions(pool: asyncpg.Pool, user_id: int) -> dict:
+    """إرجاع استثناءات العضو (True تعني أنه مستثنى ومسموح له الإرسال دائماً)"""
+    async with pool.acquire() as conn:
+        raw = await conn.fetchval(
+            "SELECT protection_exceptions FROM members WHERE user_id = $1", user_id
+        )
+
+    if raw is None:
+        return {}
+
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except Exception:
+            return {}
+
+    if isinstance(raw, dict):
+        return raw
+
+    return {}
+
+
+async def toggle_member_exception(pool: asyncpg.Pool, user_id: int, feature_key: str) -> bool:
+    """
+    تبديل استثناء العضو:
+    True = مستثنى (يمكنه الإرسال حتى لو عُطلت الميزة عاماً).
+    False = غير مستثنى (يخضع للتعطيل العام).
+    """
+    exceptions = await get_member_exceptions(pool, user_id)
+    exceptions[feature_key] = not exceptions.get(feature_key, False)
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE members SET protection_exceptions = $1::jsonb WHERE user_id = $2",
+            json.dumps(exceptions), user_id,
+        )
+
+    return exceptions[feature_key]
+
+
+async def is_exempted(pool: asyncpg.Pool, user_id: int, feature_key: str) -> bool:
+    """التحقق مما إذا كان العضو يملك استثناءً نشطاً لميزة معينة (True = نعم مستثنى)"""
+    exceptions = await get_member_exceptions(pool, user_id)
+    return exceptions.get(feature_key, False)
+
+
+# ===== سجل المحذوفات =====
+
+async def log_deleted_message(pool: asyncpg.Pool, user_id: int, violation_type: str, content: str | None) -> None:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO protection_log (user_id, violation_type, content) VALUES ($1, $2, $3)",
+            user_id, violation_type, content,
+        )
+
+
+async def get_violators_with_logs_count(pool: asyncpg.Pool) -> int:
+    async with pool.acquire() as conn:
+        result = await conn.fetchval("SELECT COUNT(DISTINCT user_id) FROM protection_log")
+        return result or 0
+
+
+async def get_violators_with_logs_list(pool: asyncpg.Pool, offset: int = 0, limit: int = 6) -> list[asyncpg.Record]:
+    async with pool.acquire() as conn:
+        return await conn.fetch(
+            """
+            SELECT m.user_id, m.username, m.full_name, COUNT(p.id) AS deleted_count
+            FROM members m
+            JOIN protection_log p ON p.user_id = m.user_id
+            GROUP BY m.user_id, m.username, m.full_name
+            ORDER BY deleted_count DESC
+            OFFSET $1 LIMIT $2
+            """,
+            offset, limit,
+        )
+
+
+async def get_member_deleted_count(pool: asyncpg.Pool, user_id: int) -> int:
+    async with pool.acquire() as conn:
+        result = await conn.fetchval("SELECT COUNT(*) FROM protection_log WHERE user_id = $1", user_id)
+        return result or 0
+
+
+async def get_member_deleted_entries(pool: asyncpg.Pool, user_id: int, offset: int = 0, limit: int = 5) -> list[asyncpg.Record]:
+    async with pool.acquire() as conn:
+        return await conn.fetch(
+            """
+            SELECT id, violation_type, content, created_at
+            FROM protection_log
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            OFFSET $2 LIMIT $3
+            """,
+            user_id, offset, limit,
+        )
+
