@@ -1,92 +1,50 @@
 import re
-import unicodedata
+from core.config import Config
+from systems.ai.gemini_client import analyze_content_with_gemini
+from systems.protection.queries import get_cached_protection_settings, log_to_advanced_archive
 
-# ===== توحيد الحروف العربية =====
-_ARABIC_NORMALIZATION_MAP = {
-    "أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا",
-    "ة": "ه",
-    "ى": "ي",
-    "ؤ": "و",
-    "ئ": "ي",
-    "ـ": "",
-}
-
-# ===== عربيزي =====
-_LEET_MAP = {
-    "0": "و",
-    "2": "ء",
-    "3": "ع",
-    "4": "ا",
-    "5": "س",
-    "6": "ط",
-    "7": "ح",
-    "8": "غ",
-    "9": "ص",
-}
-
-# ===== التشكيل =====
-_ARABIC_DIACRITICS = re.compile(r"[\u064B-\u065F\u0670\u0640]")
-
-# ===== تحويل أي رموز بين الحروف إلى فراغ موحّد =====
-# (حتى نقدر نكشف "ح-م-ا-ر" أو "ح م ا ر")
-_SEPARATORS = re.compile(r"[^a-z\u0600-\u06FF]+")
-
-
-def normalize_text(text: str) -> str:
+def normalize_text(text):
+    """تنظيف النصوص وتوحيدها البرمجي لمنع التلاعب"""
     if not text:
         return ""
+    text = re.sub(r'[^\w\s]', '', text)
+    text = re.sub(r'[إأآا]', 'ا', text)
+    text = re.sub(r'[ىي]', 'ي', text)
+    text = re.sub(r'[هة]', 'ه', text)
+    return text.strip().lower()
 
-    # Unicode normalize
-    text = unicodedata.normalize("NFKC", text).lower()
+def inspect_message(bot, message):
+    """الفحص فائق السرعة عبر الكاش والذكاء الاصطناعي متعدد الوسائط"""
+    chat_id = message.chat.id
+    raw_text = message.text or ""
+    
+    # جلب الإعدادات من الذاكرة المؤقتة (الكاش) فورا دون لمس قاعدة البيانات
+    settings = get_cached_protection_settings(chat_id)
+    
+    if not settings['enabled']:
+        return True
 
-    # إزالة التشكيل + tatweel
-    text = _ARABIC_DIACRITICS.sub("", text)
+    # 1. فحص الكلمات المحظورة عبر الكاش (سرعة فائقة)
+    normalized = normalize_text(raw_text)
+    for bad_word in settings.get('blocked_words', []):
+        if bad_word in normalized:
+            trigger_archive_flow(bot, message, reason=f"كلمة محظورة كاش ({bad_word})")
+            return False
 
-    # توحيد عربي
-    for k, v in _ARABIC_NORMALIZATION_MAP.items():
-        text = text.replace(k, v)
+    # 2. فحص سياق النص بالذكاء الاصطناعي (Gemini)
+    if settings['ai_enabled'] and raw_text:
+        is_safe, reason = analyze_content_with_gemini(raw_text, strictness=settings['strictness'])
+        if not is_safe:
+            trigger_archive_flow(bot, message, reason=f"تحليل سياقي ذكي: {reason}")
+            return False
 
-    # عربيزي
-    for k, v in _LEET_MAP.items():
-        text = text.replace(k, v)
+    return True
 
-    # تحويل أي رموز / مسافات / نقاط إلى فراغ واحد
-    text = _SEPARATORS.sub(" ", text)
-
-    # إزالة المسافات (نخلي النص “ملتصق” عشان كشف التلاعب)
-    text = text.replace(" ", "")
-
-    # تقليل التكرار: أقوى وأصح من السابق
-    text = re.sub(r"(.)\1+", r"\1", text)
-
-    return text
-
-
-# ===== تحويل قائمة الكلمات =====
-def normalize_words(words: list[str]) -> set:
-    return {normalize_text(w) for w in words if w}
-
-
-# ===== مطابقة آمنة (تمنع الأخطاء داخل كلمات أطول) =====
-def contains_word(text: str, word: str) -> bool:
-    if not word:
-        return False
-
-    # نستخدم بحث مباشر بعد التطبيع
-    return word in text
-
-
-# ===== البحث النهائي =====
-def find_matched_word(text: str, banned_words: list[str]) -> str | None:
-    norm_text = normalize_text(text)
-
-    if not norm_text:
-        return None
-
-    for word in banned_words:
-        norm_word = normalize_text(word)
-
-        if contains_word(norm_text, norm_word):
-            return word
-
-    return None
+def trigger_archive_flow(bot, message, reason):
+    """حذف فوري وتوليد التقرير التفاعلي للأرشيف"""
+    try:
+        bot.delete_message(message.chat.id, message.message_id)
+    except Exception:
+        pass
+    
+    log_to_advanced_archive(bot, message, reason)
