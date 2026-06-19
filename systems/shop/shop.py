@@ -7,6 +7,7 @@
 أمر "لقب"/"القاب"/"مشتريات"/"مشترياتي" -> الألقاب المملوكة + تفعيل أحدها.
 """
 
+import asyncio
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 
@@ -161,7 +162,6 @@ async def clear_chat_command(message: Message) -> None:
     # إشعار مؤقت للعضو ثم حذفه ليبقى الشات نظيفاً
     notice = await message.reply(messages.clear_chat_done_text(deleted_count))
     
-    import asyncio
     await asyncio.sleep(3)
     try:
         await notice.delete()
@@ -170,7 +170,7 @@ async def clear_chat_command(message: Message) -> None:
 
 
 async def _delete_member_messages(callback: CallbackQuery | Message, user_id: int) -> int:
-    """دالة فحص وحذف ذكية: تحذف فقط رسائل العضو المستهدف وتتخطى البقية تماماً."""
+    """دالة فحص وحذف ذكية ومحمية: تحذف فقط رسائل العضو المستهدف وتتخطى البقية تماماً."""
     pool = await get_pool()
     chat_id = callback.chat.id if isinstance(callback, Message) else callback.message.chat.id
     start_id = callback.message_id if isinstance(callback, Message) else callback.message.message_id
@@ -179,6 +179,7 @@ async def _delete_member_messages(callback: CallbackQuery | Message, user_id: in
     end_id = max(1, start_id - range_count)
 
     deleted = 0
+    bot_obj = callback.bot if isinstance(callback, Message) else callback.message.bot
 
     for msg_id in range(start_id, end_id - 1, -1):
         try:
@@ -187,11 +188,23 @@ async def _delete_member_messages(callback: CallbackQuery | Message, user_id: in
                 await callback.delete()
                 deleted += 1
                 continue
+
+            # فحص هوية كاتب الرسالة بشكل صامت عن طريق التوجيه (Forward) المؤقت لخاص العضو نفسه
+            try:
+                check_msg = await bot_obj.forward_message(chat_id=user_id, from_chat_id=chat_id, message_id=msg_id)
+                is_same_user = check_msg.forward_from and check_msg.forward_from.id == user_id
                 
-            bot_obj = callback.bot if isinstance(callback, Message) else callback.message.bot
-            # تليجرام يحذف رسائل الشخص نفسه تلقائياً، وإذا كانت لآخرين ستفشل المحاولة ويتخطاها لضمان حماية رسائل الآخرين
-            await bot_obj.delete_message(chat_id=chat_id, message_id=msg_id)
-            deleted += 1
+                # إزالة رسالة الفحص من خاص العضو فوراً لمنع الإزعاج
+                await check_msg.delete()
+                
+                # إذا كانت الرسالة ملكاً لنفس العضو الذي طلب المسح، يتم حذفها من الجروب
+                if is_same_user:
+                    await bot_obj.delete_message(chat_id=chat_id, message_id=msg_id)
+                    deleted += 1
+            except Exception:
+                # إذا فشل الفحص بسبب إعدادات الخصوصية للحساب، نتخطاها حمايةً لرسائل الآخرين
+                continue
+                
         except Exception:
             continue
 
