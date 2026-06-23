@@ -13,6 +13,7 @@
 """
 
 from aiogram import Router, F
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
@@ -43,7 +44,7 @@ async def handle_transfer(message: Message) -> None:
             break
 
     if matched_trigger is None:
-        return
+        raise SkipHandler
 
     # التحقق من وجود رد على رسالة
     if message.reply_to_message is None or message.reply_to_message.from_user is None:
@@ -194,3 +195,4 @@ async def cancel_transfer(callback: CallbackQuery) -> None:
         pass
 
     await callback.answer("❌ تم إلغاء التحويل")
+
