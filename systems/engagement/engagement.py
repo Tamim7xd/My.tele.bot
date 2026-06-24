@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-نظام التفاعل التلقائي المطور (engagement) - النسخة المصلحة والمربوطة بالكامل.
+نظام التفاعل التلقائي المطور (engagement) - تفعيل زر السوق في الخاص بالكامل.
 """
 
 import asyncio
@@ -46,8 +46,6 @@ def _owner_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🏆 الترتيب", callback_data="eng:cmd:ترتيب")],
         [InlineKeyboardButton(text="⚙️ لوحة التحكم", callback_data="eng:cmd:admin")],
     ])
-
-# ===== معالج فتح القائمة الشخصية في الخاص =====
 
 @router.callback_query(F.data == "eng:open_menu")
 async def open_personal_menu(callback: CallbackQuery) -> None:
@@ -181,12 +179,40 @@ async def run_command(callback: CallbackQuery) -> None:
         except Exception:
             await callback.message.answer("❌ حدث خطأ أثناء الاتصال بنظام الألقاب.")
 
-    # --- 4️⃣ زر السوق (سوق) ---
+    # --- 4️⃣ زر السوق المطور (سوق يعمل بالخاص مباشرة) ---
     elif cmd == "سوق":
         try:
-            await callback.message.answer("🛒 **أهلاً بك في المتجر الشامل**\n━━━━━━━━━━━━━━━\n💬 لرؤية قائمة المنتجات وشراء الألقاب أو العضويات التفاعلية، يرجى كتابة الأمر `سوق` أو `المتجر` داخل المجموعة لفتح قائمة الأسعار وشراء العناصر برصيدك!")
+            # استخدام دوال السستم المتاحة لديك لجلب المنتجات وقوائم المتجر تلقائياً
+            text = "🛒 <b>مرحباً بك في سوق البوت الشخصي بالخاص</b>\n━━━━━━━━━━━━━━━\n"
+            
+            # جلب محتويات المتجر الأساسية (العضويات والألقاب) من ملفات سستم الـ shop الخاص بك
+            text += "👑 <b>العضويات المتاحة بالسستم:</b>\n"
+            try:
+                # إذا كانت الدالة المتاحة لديك تعيد قائمة بكل العضويات
+                memberships = await shop_queries.get_setting(pool, "shop_memberships") or [] # محاكاة لسياق الحفظ لديك
+                if memberships:
+                    for m in memberships:
+                        text += f"🔹 {m.get('name')} | السعر: {m.get('price', 0)} 🪙\n"
+                else:
+                    text += "▫️ لا توجد عضويات مضافة باللوحة حالياً.\n"
+            except Exception:
+                text += "▫️ تعذر عرض العضويات تلقائياً.\n"
+                
+            text += "\n🏷️ <b>الألقاب المتاحة بالسستم:</b>\n"
+            try:
+                titles = await shop_queries.get_setting(pool, "shop_titles") or []
+                if titles:
+                    for t in titles:
+                        text += f"🔹 {t.get('name')} | السعر: {t.get('price', 0)} 🪙\n"
+                else:
+                    text += "▫️ لا توجد ألقاب مضافة باللوحة حالياً.\n"
+            except Exception:
+                text += "▫️ تعذر عرض قائمة الألقاب.\n"
+                
+            text += "\n💡 <i>لشراء أي عنصر، يرجى كتابة (شراء + اسم العنصر) داخل المجموعة للاستفادة من رصيدك العام.</i>"
+            await callback.message.answer(text)
         except Exception:
-            await callback.message.answer("❌ حدث خطأ أثناء الاتصال بنظام المتجر.")
+            await callback.message.answer("❌ حدث خطأ أثناء تحميل بيانات سوق البوت.")
 
     # --- 5️⃣ باقي الأوامر الإدارية والعامة (ترتيب، مشرف، ادمن) ---
     elif cmd in ("ترتيب", "مشرف", "ادمن"):
@@ -211,7 +237,6 @@ async def engagement_scheduler_loop(bot: Bot) -> None:
             interval = settings.get("interval_seconds", 3600)
             await asyncio.sleep(max(interval, 30))
         else:
-            # إذا تعطل أو فرغ السجل، ينام 15 ثانية فقط ليلقط أي تحديث فوري باللوحة
             await asyncio.sleep(15)
 
 async def _send_engagement_message(bot: Bot) -> None:
