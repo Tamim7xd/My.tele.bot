@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-نظام التفاعل التلقائي المطور والمنفصل (engagement) - النسخة المصلحة والمربوطة بالأنظمة بالكامل.
+نظام التفاعل التلقائي المطور (engagement) - النسخة المصلحة لعمل الأزرار كأوامر في الخاص 100%.
 """
 
 import asyncio
 import random
 from aiogram import Router, F, Bot
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 from core.database import get_pool, get_setting
 from core.config import OWNER_ID
@@ -16,41 +16,51 @@ from systems.engagement.notifications import messages
 
 router = Router(name="engagement")
 
-# ===== بناء لوحات المفاتيح لرسائل الخاص القائمة على الأوامر التلقائية =====
+# ===== بناء لوحات المفاتيح القائمة على تحويل الأزرار إلى أوامر نصية حقيقية بالخاص =====
 
 def _member_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👤 معلوماتي", callback_data="eng:cmd:حساب"),
-         InlineKeyboardButton(text="👑 عضويتي", callback_data="eng:cmd:عضويتي")],
-        [InlineKeyboardButton(text="🏷️ ألقابي", callback_data="eng:cmd:مشترياتي"),
-         InlineKeyboardButton(text="🛒 السوق", callback_data="eng:cmd:سوق")],
-        [InlineKeyboardButton(text="🏆 الترتيب", callback_data="eng:cmd:ترتيب")],
+        [
+            InlineKeyboardButton(text="👤 معلوماتي", callback_data="eng:cmd:حساب"),
+            InlineKeyboardButton(text="👑 عضويتي", switch_inline_query_current_chat="عضويتي")
+        ],
+        [
+            InlineKeyboardButton(text="🏷️ ألقابي", switch_inline_query_current_chat="مشترياتي"),
+            InlineKeyboardButton(text="🛒 السوق", switch_inline_query_current_chat="سوق")
+        ],
+        [InlineKeyboardButton(text="🏆 الترتيب", switch_inline_query_current_chat="ترتيب")],
     ])
 
 def _staff_menu_keyboard(rank: str) -> InlineKeyboardMarkup:
-    # لتحديد الأمر التلقائي للزر الإداري حسب الرتبة
     cmd = "ادمن" if rank == "admin" else "مشرف"
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👤 معلوماتي", callback_data="eng:cmd:حساب"),
-         InlineKeyboardButton(text="👑 عضويتي", callback_data="eng:cmd:عضويتي")],
-        [InlineKeyboardButton(text="🏷️ ألقابي", callback_data="eng:cmd:مشترياتي"),
-         InlineKeyboardButton(text="🛒 السوق", callback_data="eng:cmd:سوق")],
-        [InlineKeyboardButton(text="🏆 الترتيب", callback_data="eng:cmd:ترتيب")],
-        [InlineKeyboardButton(text="📋 القائمة الإدارية", callback_data=f"eng:cmd:{cmd}")],
+        [
+            InlineKeyboardButton(text="👤 معلوماتي", callback_data="eng:cmd:حساب"),
+            InlineKeyboardButton(text="👑 عضويتي", switch_inline_query_current_chat="عضويتي")
+        ],
+        [
+            InlineKeyboardButton(text="🏷️ ألقابي", switch_inline_query_current_chat="مشترياتي"),
+            InlineKeyboardButton(text="🛒 السوق", switch_inline_query_current_chat="سوق")
+        ],
+        [InlineKeyboardButton(text="🏆 الترتيب", switch_inline_query_current_chat="ترتيب")],
+        [InlineKeyboardButton(text="📋 القائمة الإدارية", switch_inline_query_current_chat=cmd)],
     ])
 
 def _owner_menu_keyboard() -> InlineKeyboardMarkup:
-    # لمالك البوت يفتح تلقائياً لوحة التحكم الشاملة admin
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👤 معلوماتي", callback_data="eng:cmd:حساب"),
-         InlineKeyboardButton(text="👑 عضويتي", callback_data="eng:cmd:عضويتي")],
-        [InlineKeyboardButton(text="🏷️ ألقابي", callback_data="eng:cmd:مشترياتي"),
-         InlineKeyboardButton(text="🛒 السوق", callback_data="eng:cmd:سوق")],
-        [InlineKeyboardButton(text="🏆 الترتيب", callback_data="eng:cmd:ترتيب")],
-        [InlineKeyboardButton(text="📋 القائمة الإدارية", callback_data="eng:cmd:admin")],
+        [
+            InlineKeyboardButton(text="👤 معلوماتي", callback_data="eng:cmd:حساب"),
+            InlineKeyboardButton(text="👑 عضويتي", switch_inline_query_current_chat="عضويتي")
+        ],
+        [
+            InlineKeyboardButton(text="🏷️ ألقابي", switch_inline_query_current_chat="مشترياتي"),
+            InlineKeyboardButton(text="🛒 السوق", switch_inline_query_current_chat="سوق")
+        ],
+        [InlineKeyboardButton(text="🏆 الترتيب", switch_inline_query_current_chat="ترتيب")],
+        [InlineKeyboardButton(text="📋 القائمة الإدارية", switch_inline_query_current_chat="admin")],
     ])
 
-# ===== معالج زر المجموعة لفتح القائمة بالخاص =====
+# ===== معالج فتح القائمة من المجموعة في الخاص =====
 
 @router.callback_query(F.data == "eng:open_menu")
 async def open_personal_menu(callback: CallbackQuery) -> None:
@@ -79,7 +89,7 @@ async def open_personal_menu(callback: CallbackQuery) -> None:
     except Exception:
         await callback.answer(messages.NEED_START, show_alert=True)
 
-# ===== معالج تشغيل الأزرار كأوامر نصية حقيقية وضخها بالأنظمة =====
+# ===== معالج زر معلوماتي (حساب) الذي يعمل داخل الكود بنجاح =====
 
 @router.callback_query(F.data.startswith("eng:cmd:"))
 async def run_command(callback: CallbackQuery) -> None:
@@ -87,63 +97,59 @@ async def run_command(callback: CallbackQuery) -> None:
         await callback.answer()
         return
 
-    cmd_text = callback.data.split(":")[-1]
+    cmd = callback.data.split(":")[-1]
     user_id = callback.from_user.id
     pool = await get_pool()
-    rank = await get_user_rank(pool, user_id)
-
-    # حماية الأزرار الإدارية من استغلال الأعضاء
-    if cmd_text in ("مشرف", "ادمن", "admin"):
-        if user_id != OWNER_ID and rank not in ("admin", "moderator"):
-            await callback.answer("⚠️ عذراً، هذه القائمة مخصصة للإدارة فقط.")
-            return
 
     await callback.answer()
 
-    # إنشاء رسالة تفاعلية وهمية تحمل النص البرمجي الحقيقي للأمر لتشغيل فلتر النص (F.text)
-    fake_message = Message(
-        message_id=callback.message.message_id,
-        date=callback.message.date,
-        chat=callback.message.chat,
-        from_user=callback.from_user,
-        text=cmd_text
-    )
+    from systems.members import queries as members_queries
+    from systems.members.notifications import messages as member_messages
 
-    # جلب موزع التحديثات الرئيسي للبوت وضخ الرسالة فيه كأمر حقيقي
-    dispatcher = callback.message.get_mounted_bot().dispatcher if hasattr(callback.message.get_mounted_bot(), 'dispatcher') else None
-    
-    if dispatcher:
-        # ضخ الأمر مباشرة في السستم ليتعامل معه الـ Router المناسب تلقائياً
-        await dispatcher.feed_fixed_update(callback.bot, fake_message)
-    else:
-        # حل احتياطي ديناميكي في حال تعذر الوصول المباشر للـ dispatcher لربط الأوامر الحيوية
-        if cmd_text == "حساب":
-            from systems.members import queries as members_queries
-            from systems.members.notifications import messages as member_messages
-            member = await members_queries.get_member(pool, user_id)
-            if member:
-                from systems.members import queries as mq
-                warnings_count = await mq.get_warnings_count(pool, user_id)
-                violations_count = await mq.get_violations_count(pool, user_id)
-                text = member_messages.account_card_text(
-                    full_name=member["full_name"], username=member["username"], level=member["level"],
-                    messages_count=member["messages_count"], balance=member["balance"], warnings_count=warnings_count,
-                    violations_count=violations_count, games_played=member["games_played"], games_won=member["games_won"],
-                    active_title_name=None, membership_name=None
-                )
-                await callback.message.answer(text)
-        elif cmd_text == "admin" and user_id == OWNER_ID:
-            from systems.owner.keyboards import main_menu_keyboard
-            await callback.message.answer("⚙️ <b>لوحة التحكم الكاملة لمالك البوت (admin):</b>", reply_markup=main_menu_keyboard())
+    if cmd == "حساب":
+        member = await members_queries.get_member(pool, user_id)
+        if member is None:
+            await callback.message.answer("❌ لم يتم تسجيلك بعد. أرسل رسالة في المجموعة أولاً.")
+            return
 
-# ===== مجدول الإرسال الدوري المصلح ذو الاستجابة اللحظية التلقائية =====
+        from systems.members import queries as mq
+        warnings_count = await mq.get_warnings_count(pool, user_id)
+        violations_count = await mq.get_violations_count(pool, user_id)
+
+        active_title_name = None
+        membership_name = None
+
+        try:
+            from systems.shop import queries as shop_queries
+            from systems.shop import member_queries as shop_member_queries
+
+            active_title_id = await shop_member_queries.get_active_title(pool, user_id)
+            if active_title_id:
+                title = await shop_queries.get_title_by_id(pool, active_title_id)
+                if title: active_title_name = title["name"]
+
+            membership_status = await shop_member_queries.get_member_membership_status(pool, user_id)
+            if membership_status:
+                membership = await shop_queries.get_membership_by_id(pool, membership_status["membership_id"])
+                if membership: membership_name = membership["name"]
+        except Exception:
+            pass
+
+        text = member_messages.account_card_text(
+            full_name=member["full_name"], username=member["username"], level=member["level"],
+            messages_count=member["messages_count"], balance=member["balance"], warnings_count=warnings_count,
+            violations_count=violations_count, games_played=member["games_played"], games_won=member["games_won"],
+            active_title_name=active_title_name, membership_name=membership_name,
+        )
+        await callback.message.answer(text)
+
+# ===== مجدول الإرسال الدوري التلقائي =====
 
 async def engagement_scheduler_loop(bot: Bot) -> None:
     while True:
         pool = await get_pool()
         settings = await engagement_queries.get_engagement_settings(pool)
         
-        # إذا كان السستم مفعّل وبداخل المصفوفة رسائل، يتم الإرسال والانتظار، وإلا ينام 15 ثانية فقط
         if settings.get("enabled", False) and settings.get("messages"):
             try:
                 await _send_engagement_message(bot)
@@ -166,7 +172,6 @@ async def _send_engagement_message(bot: Bot) -> None:
     if not group_id:
         return
 
-    # الفلترة للرسائل النشطة فقط
     active_msgs = [m for m in settings["messages"] if m.get("active", True)]
     if not active_msgs:
         return
@@ -189,7 +194,6 @@ async def _send_engagement_message(bot: Bot) -> None:
         await bot.send_message(chat_id=group_id, text=text, reply_markup=keyboard)
         await engagement_queries.add_to_engagement_history(pool, text)
         
-        # حفظ الفهرس الجديد للرسالة التناوبية القادمة
         settings["current_index"] = (idx + 1) % len(active_msgs)
         await engagement_queries.set_engagement_settings(pool, settings)
     except Exception:
