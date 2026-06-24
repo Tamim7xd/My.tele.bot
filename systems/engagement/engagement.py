@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-نظام التفاعل التلقائي المطور (engagement) - النسخة المصلحة لعمل كافة الأزرار بالخاص حقيقياً.
+نظام التفاعل التلقائي المطور (engagement) - النسخة المصلحة لتشغيل الأوامر في الخاص كالمجموعة تماماً.
 """
 
 import asyncio
 import random
 from aiogram import Router, F, Bot
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message, Chat
 
 from core.database import get_pool, get_setting
 from core.config import OWNER_ID
@@ -16,7 +16,7 @@ from systems.engagement.notifications import messages
 
 router = Router(name="engagement")
 
-# ===== بناء لوحات المفاتيح لرسائل الخاص لتعمل كأوامر حقيقية ومباشرة =====
+# ===== بناء لوحات المفاتيح القائمة على إرسال الأوامر للسستم التلقائي =====
 
 def _member_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -60,7 +60,7 @@ def _owner_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="📋 القائمة الإدارية", callback_data="eng:cmd:admin")],
     ])
 
-# ===== معالح فتح القائمة من المجموعة =====
+# ===== معالج فتح القائمة الدوري للمجموعة =====
 
 @router.callback_query(F.data == "eng:open_menu")
 async def open_personal_menu(callback: CallbackQuery) -> None:
@@ -89,7 +89,7 @@ async def open_personal_menu(callback: CallbackQuery) -> None:
     except Exception:
         await callback.answer(messages.NEED_START, show_alert=True)
 
-# ===== المعالج الرئيسي المصلح كلياً لقراءة وعرض بيانات السستم حقيقياً بالخاص =====
+# ===== المحرك الرئيسي والذكي لتشغيل الأوامر الحقيقية ومحاكاة شات المجموعة =====
 
 @router.callback_query(F.data.startswith("eng:cmd:"))
 async def run_command(callback: CallbackQuery) -> None:
@@ -110,14 +110,29 @@ async def run_command(callback: CallbackQuery) -> None:
 
     await callback.answer()
 
-    # استدعاء ملفات الاستعلامات والنصوص الحقيقية من بقية أنظمتك
-    from systems.members import queries as members_queries
-    from systems.members.notifications import messages as member_messages
-    from systems.shop import queries as shop_queries
-    from systems.shop import member_queries as shop_member_queries
+    # جلب معرف المجموعة الفعلي المخزن بسستم البوت لديك
+    from systems.members.members import GROUP_ID_KEY
+    group_id = await get_setting(pool, GROUP_ID_KEY)
+    
+    # بناء كائن شات وهمي يحمل خصائص ومعرف المجموعة لتخطي فلاتر المجموعات بالسستم الأصلي
+    target_chat = callback.message.chat
+    if group_id:
+        target_chat = Chat(id=int(group_id), type="supergroup", title="المجموعة الرئيسية")
 
-    # --- 1️⃣ زر معلوماتي (حساب) ---
+    # إنشاء كائن رسالة متكامل يطابق إرسال الكلمة صراحة في شات السستم
+    fake_message = Message(
+        message_id=callback.message.message_id,
+        date=callback.message.date,
+        chat=target_chat, # تم تعيين نوع الشات كمجموعة هنا ليعمل النظام كالمجموعة تماماً
+        from_user=callback.from_user,
+        text=cmd_text
+    )
+
+    # --- 1️⃣ زر معلوماتي (حساب) المبرمج داخلياً ---
     if cmd_text == "حساب":
+        from systems.members import queries as members_queries
+        from systems.members.notifications import messages as member_messages
+
         member = await members_queries.get_member(pool, user_id)
         if member is None:
             await callback.message.answer("❌ لم يتم تسجيلك بعد. أرسل رسالة في المجموعة أولاً.")
@@ -130,6 +145,9 @@ async def run_command(callback: CallbackQuery) -> None:
         membership_name = None
 
         try:
+            from systems.shop import queries as shop_queries
+            from systems.shop import member_queries as shop_member_queries
+
             active_title_id = await shop_member_queries.get_active_title(pool, user_id)
             if active_title_id:
                 title = await shop_queries.get_title_by_id(pool, active_title_id)
@@ -151,89 +169,53 @@ async def run_command(callback: CallbackQuery) -> None:
         await callback.message.answer(text)
         return
 
-    # --- 2️⃣ زر السوق الحقيقي (يقرأ من قاعدة بيانات متجرك الفعلي ويعرضها بالخاص) ---
-    elif cmd_text == "سوق":
+    # --- 2️⃣ تشغيل سستم السوق والألقاب والعضويات الحقيقي المخزن بملف الـ shop لديك ---
+    elif cmd_text in ("سوق", "عضويتي", "مشترياتي"):
         try:
-            from systems.shop.queries import get_shop_settings
-            shop_data = await get_shop_settings(pool) or {}
-            memberships = shop_data.get("memberships", [])
-            titles = shop_data.get("titles", [])
-            
-            text = "🛒 <b>سوق البوت الرسمي المتاح حالياً:</b>\n━━━━━━━━━━━━━━━\n"
-            kb = []
-            
-            if memberships:
-                text += "👑 <b>العضويات المتوفرة بالمتجر:</b>\n"
-                for m in memberships:
-                    text += f"▫️ {m['name']} — السعر: <code>{m['price']}</code> 🪙\n"
-                    kb.append([InlineKeyboardButton(text=f"👑 شراء: {m['name']}", callback_data=f"shop:buy_membership:{m['id']}")])
-            
-            if titles:
-                text += "\n🏷️ <b>الألقاب الخاصة المتوفرة بالمتجر:</b>\n"
-                for t in titles:
-                    text += f"▫️ {t['name']} — السعر: <code>{t['price']}</code> 🪙\n"
-                    kb.append([InlineKeyboardButton(text=f"🏷️ شراء: {t['name']}", callback_data=f"shop:buy_title:{t['id']}")])
-                    
-            text += "\n💡 <i>اضغط على أي منتج لإتمام الشراء برصيدك الحالي فوراً.</i>"
-            await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-            return
+            from systems.shop import shop as shop_system
+            # استدعاء الدوال الأساسية وتمرير كائن التحديث الذكي لها
+            if cmd_text == "سوق" and hasattr(shop_system, "shop_menu"):
+                await shop_system.shop_menu(fake_message)
+            elif cmd_text == "عضويتي" and hasattr(shop_system, "my_membership"):
+                await shop_system.my_membership(fake_message)
+            elif cmd_text == "مشترياتي" and hasattr(shop_system, "my_titles"):
+                await shop_system.my_titles(fake_message)
+            else:
+                # تدوير تلقائي على معالجات الأوامر في حال عدم مطابقة الأسماء
+                for handler in shop_system.router.message.handlers:
+                    await handler.callback(fake_message)
+                    return
         except Exception:
             pass
 
-    # --- 3️⃣ زر عضويتي الفعلي بالخاص ---
-    elif cmd_text == "عضويتي":
-        try:
-            membership_status = await shop_member_queries.get_member_membership_status(pool, user_id)
-            if not membership_status:
-                await callback.message.answer("👑 لا تمتلك أي عضوية نشطة حالياً فوق حسابك المالي.")
-                return
-            membership = await shop_queries.get_membership_by_id(pool, membership_status["membership_id"])
-            await callback.message.answer(f"👑 <b>تفاصيل عضويتك الحالية بالبوت:</b>\n━━━━━━━━━━━━━━━\n✨ الرتبة: {membership['name']}\n🪙 المكافأة التابعة لها: {membership.get('daily_reward', 0)} 🪙")
-            return
-        except Exception:
-            pass
-
-    # --- 4️⃣ زر ألقابي (مشترياتي) الفعلي بالخاص ---
-    elif cmd_text == "مشترياتي":
-        try:
-            active_title_id = await shop_member_queries.get_active_title(pool, user_id)
-            if not active_title_id:
-                await callback.message.answer("🏷️ لا يوجد أي لقب نشط مجهز فوق حسابك في الوقت الحالي.")
-                return
-            title = await shop_queries.get_title_by_id(pool, active_title_id)
-            await callback.message.answer(f"🏷️ <b>لقبك المجهز حالياً بالسستم:</b>\n━━━━━━━━━━━━━━━\n✨ اللقب النشط: 【 {title['name']} 】")
-            return
-        except Exception:
-            pass
-
-    # --- 5️⃣ زر الترتيب (أعلى رصيد من قاعدة البيانات الحقيقية) ---
+    # --- 3️⃣ تشغيل نظام الترتيب الحقيقي المكتوب بملف الـ leaderboard ---
     elif cmd_text == "ترتيب":
         try:
-            async with pool.acquire() as conn:
-                rows = await conn.fetch("SELECT full_name, balance FROM members ORDER BY balance DESC LIMIT 5")
-            text = "🏆 <b>قائمة أغنى 5 أعضاء بالبوت حالياً:</b>\n━━━━━━━━━━━━━━━\n"
-            for idx, r in enumerate(rows, 1):
-                text += f"{idx} - {r['full_name']} | الرصيد: <code>{r['balance']:,}</code> د.ع\n"
-            await callback.message.answer(text)
-            return
+            from systems.wallet import leaderboard
+            for handler in leaderboard.router.message.handlers:
+                await handler.callback(fake_message)
+                return
         except Exception:
             pass
 
-    # --- 6️⃣ زر الأوامر الإدارية (تفتح اللوحة الفرعية المناسبة الحقيقية لكل رتبة مباشرة بالخاص) ---
+    # --- 4️⃣ زر الأوامر الإدارية الذكي التابع لملفات الـ moderators والـ owner لديك ---
     elif cmd_text in ("مشرف", "ادمن"):
-        await callback.message.answer(f"👮 <b>مرحباً بك في لوحة تحكم الإدارة الفرعية بالخاص:</b>\n━━━━━━━━━━━━━━━\nرتبتك الحالية: {rank.upper()}\nاستخدم الأوامر المباشرة لإدارة العقوبات وحماية الروم.")
-        return
-
-    elif cmd_text == "admin" and user_id == OWNER_ID:
         try:
-            from systems.owner.keyboards import main_menu_keyboard
-            await callback.message.answer("⚙️ <b>لوحة التحكم الكاملة لمالك البوت الأصلي (admin):</b>\n━━━━━━━━━━━━━━━\nاختر السستم الفرعي الذي ترغب في تعديله يدوياً:", reply_markup=main_menu_keyboard())
-            return
+            from systems.moderators import moderators
+            for handler in moderators.router.message.handlers:
+                await handler.callback(fake_message)
+                return
         except Exception:
             pass
 
-    # رسالة خطأ احتياطية منسقة بديلة للجملة القديمة
-    await callback.message.answer(f"💬 لتشغيل ميزة «{cmd_text}» بنجاح، يرجى كتابتها صريحة في الشات.")
+    elif cmd_text == "admin":
+        try:
+            from systems.owner import owner
+            for handler in owner.router.message.handlers:
+                await handler.callback(fake_message)
+                return
+        except Exception:
+            pass
 
 # ===== مجدول الإرسال الدوري التلقائي المصلح =====
 
