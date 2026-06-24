@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-نظام المتجر المطور والمصلح - حظر الأوامر في المجموعات وجعلها تعمل في الخاص فقط 100%.
+نظام المتجر (shop) المطور - حظر الأوامر في المجموعات وتشغيلها حصرياً بالخاص 100%.
 """
 
 import asyncio
@@ -11,26 +11,26 @@ from core.database import get_pool
 
 router = Router(name="shop")
 
-# قائمة الكلمات والأوامر التي سيتم مسحها وحظرها تلقائياً داخل المجموعات ليبقى الشات نظيفاً
+# قائمة الأوامر التلقائية التي سيتم مسحها ومنعها داخل المجموعات ليبقى الشات نظيفاً
 BLOCKED_KEYWORDS = ["سوق", "المتجر", "عضويتي", "مشترياتي", "ألقابي", "ترتيب"]
 
 # =====================================================================
-# 1️⃣ معالج الحظر الذكي والتنظيف التلقائي داخل المجموعات
+# 1️⃣ معالج الحظر الذكي والتنظيف الفوري داخل المجموعات (جروب / سوبر جروب)
 # =====================================================================
-@router.message(F.chat.type.in_({"group", "supergroup"}) and F.text.in_(BLOCKED_KEYWORDS))
+@router.message(F.chat.type.in_({"group", "supergroup"}) & F.text.in_(BLOCKED_KEYWORDS))
 async def block_commands_in_groups(message: Message) -> None:
     try:
-        await message.delete()
+        await message.delete() # حذف رسالة العضو فوراً
     except Exception:
         pass
         
     try:
         msg = await message.answer(
-            f"⚠️ عذراً {message.from_user.full_name}، أمر «<b>{message.text}</b>» معطّل داخل المجموعة.\n"
+            f"⚠️ عذراً {message.from_user.full_name}، أمر «<b>{message.text}</b>» معطّل هنا.\n"
             f"📋 إضغط على زر التفاعل التلقائي الدوري لتشغيل الميزة في الخاص مباشرة!"
         )
         await asyncio.sleep(5)
-        await msg.delete()
+        await msg.delete() # حذف تنبيه البوت بعد 5 ثوانٍ تلقائياً
     except Exception:
         pass
 
@@ -45,10 +45,9 @@ async def shop_menu_private(message: Message) -> None:
     from systems.shop import queries as shop_queries
     
     try:
-        # جلب الإعدادات الحقيقية المخزنة بنظام المتجر لديك
         settings = await shop_queries.get_setting(pool, "shop_settings") or {}
-        memberships = settings.get("memberships", [])
-        titles = settings.get("titles", [])
+        memberships = settings.get("memberships", []) if isinstance(settings, dict) else []
+        titles = settings.get("titles", []) if isinstance(settings, dict) else []
         
         text = "🛒 <b>سوق وسوبرماركت البوت التفاعلي (الخاص):</b>\n━━━━━━━━━━━━━━━\n"
         kb = []
@@ -56,21 +55,24 @@ async def shop_menu_private(message: Message) -> None:
         if memberships:
             text += "👑 <b>العضويات المتوفرة بالمتجر:</b>\n"
             for m in memberships:
-                text += f"▫️ {m['name']} — السعر: <code>{m['price']}</code> 🪙\n"
-                kb.append([InlineKeyboardButton(text=f"👑 شراء: {m['name']}", callback_data=f"shop:buy_membership:{m['id']}")])
+                text += f"▫️ {m.get('name')} — السعر: <code>{m.get('price', 0)}</code> 🪙\n"
+                kb.append([InlineKeyboardButton(text=f"👑 شراء: {m.get('name')}", callback_data=f"shop:buy_membership:{m.get('id')}")])
         
         if titles:
             text += "\n🏷️ <b>الألقاب الخاصة المتوفرة بالمتجر:</b>\n"
             for t in titles:
-                text += f"▫️ {t['name']} — السعر: <code>{t['price']}</code> 🪙\n"
-                kb.append([InlineKeyboardButton(text=f"🏷️ شراء: {t['name']}", callback_data=f"shop:buy_title:{t['id']}")])
+                text += f"▫️ {t.get('name')} — السعر: <code>{t.get('price', 0)}</code> 🪙\n"
+                kb.append([InlineKeyboardButton(text=f"🏷️ شراء: {t.get('name')}", callback_data=f"shop:buy_title:{t.get('id')}")])
                 
-        text += "\n💡 <i>اضغط على أي منتج لإتمام الشراء برصيدك الحالي فوراً.</i>"
+        if not memberships and not titles:
+            text += "🛍️ المتجر فارغ حالياً، لم يتم إضافة منتجات بعد."
+            
+        text += "\n\n💡 <i>اضغط على أي منتج لإتمام الشراء برصيدك الحالي فوراً.</i>"
         await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
     except Exception:
         await message.answer("❌ تعذر فتح قائمة معروضات السوق بالخاص حالياً.")
 
-@router.message(F.chat.type == "private" and (Command("سوق") | (F.text == "سوق") | Command("المتجر") | (F.text == "المتجر")))
+@router.message((F.chat.type == "private") & (Command("سوق") | (F.text == "سوق") | Command("المتجر") | (F.text == "المتجر")))
 async def shop_command_handler(message: Message) -> None:
     await shop_menu_private(message)
 
@@ -92,7 +94,7 @@ async def membership_private(message: Message) -> None:
     except Exception:
         await message.answer("❌ خطأ أثناء جلب تفاصيل نظام العضويات.")
 
-@router.message(F.chat.type == "private" and (Command("عضويتي") | (F.text == "عضويتي")))
+@router.message((F.chat.type == "private") & (Command("عضويتي") | (F.text == "عضويتي")))
 async def membership_command_handler(message: Message) -> None:
     await membership_private(message)
 
@@ -114,6 +116,6 @@ async def titles_private(message: Message) -> None:
     except Exception:
         await message.answer("❌ خطأ أثناء جلب قائمة الألقاب الخاصة بك.")
 
-@router.message(F.chat.type == "private" and (Command("مشترياتي") | (F.text == "مشترياتي") | Command("ألقابي") | (F.text == "ألقابي")))
+@router.message((F.chat.type == "private") & (Command("مشترياتي") | (F.text == "مشترياتي") | Command("ألقابي") | (F.text == "ألقابي")))
 async def titles_command_handler(message: Message) -> None:
     await titles_private(message)
