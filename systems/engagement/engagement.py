@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-نظام التفاعل التلقائي المطور (engagement) - تشغيل الأنظمة الأخرى حقيقيًا ومباشرًا بالخاص.
+نظام التفاعل التلقائي المطور (engagement) - النسخة المصلحة لربط الدوال الحقيقية بالخاص مباشرة.
 """
 
 import asyncio
@@ -89,7 +89,7 @@ async def open_personal_menu(callback: CallbackQuery) -> None:
     except Exception:
         await callback.answer(messages.NEED_START, show_alert=True)
 
-# ===== المعالج الرئيسي المصلح كلياً لربط الدوال الحقيقية بالخاص مباشرة =====
+# ===== المعالج الرئيسي المصلح كلياً للاستدعاء المباشر لدوال السستم الحقيقي =====
 
 @router.callback_query(F.data.startswith("eng:cmd:"))
 async def run_command(callback: CallbackQuery) -> None:
@@ -110,7 +110,7 @@ async def run_command(callback: CallbackQuery) -> None:
 
     await callback.answer()
 
-    # إنشاء رسالة وهمية لتغذية الدوال الأصلية
+    # إنشاء كائن رسالة متوافق لتغذية دوال أنظمتك الأخرى الحقيقية
     fake_message = Message(
         message_id=callback.message.message_id,
         date=callback.message.date,
@@ -160,53 +160,69 @@ async def run_command(callback: CallbackQuery) -> None:
         await callback.message.answer(text)
         return
 
-    # --- 2️⃣ تشغيل نظام السوق واللقب والعضوية الحقيقي بطلب مباشر من ملف الـ shop لديك ---
-    elif cmd_text in ("سوق", "عضويتي", "مشترياتي"):
+    # --- 2️⃣ تشغيل نظام السوق الفعلي بالخاص ---
+    elif cmd_text == "سوق":
         try:
-            from systems.shop import shop as shop_system
-            if cmd_text == "سوق" and hasattr(shop_system, "cmd_shop"):
-                await shop_system.cmd_shop(fake_message)
-            elif cmd_text == "عضويتي" and hasattr(shop_system, "cmd_membership"):
-                await shop_system.cmd_membership(fake_message)
-            elif cmd_text == "مشترياتي" and hasattr(shop_system, "cmd_titles"):
-                await shop_system.cmd_titles(fake_message)
-            else:
-                # محاولة تمريرها للـ handlers المسجلة داخل راوتر الشوب كأمر
-                for handler in shop_system.router.message.handlers:
-                    if hasattr(handler, "callback") and (cmd_text in str(handler.filters)):
-                        await handler.callback(fake_message)
-                        return
+            from systems.shop.shop import shop_menu
+            await shop_menu(fake_message)
+            return
         except Exception:
             pass
 
-    # --- 3️⃣ تشغيل نظام الترتيب الحقيقي من ملف الـ leaderboard ---
+    # --- 3️⃣ تشغيل لوحة العضويات الفعلية بالخاص ---
+    elif cmd_text == "عضويتي":
+        try:
+            from systems.shop.shop import my_membership
+            await my_membership(fake_message)
+            return
+        except Exception:
+            pass
+
+    # --- 4️⃣ تشغيل لوحة الألقاب والمشتريات الفعلية بالخاص ---
+    elif cmd_text == "مشترياتي":
+        try:
+            from systems.shop.shop import my_titles
+            await my_titles(fake_message)
+            return
+        except Exception:
+            pass
+
+    # --- 5️⃣ تشغيل نظام لوحة المتصدرين الفعلي بالخاص ---
     elif cmd_text == "ترتيب":
         try:
-            from systems.wallet import leaderboard
-            for handler in leaderboard.router.message.handlers:
-                await handler.callback(fake_message)
-                return
+            from systems.wallet.leaderboard import show_leaderboard
+            await show_leaderboard(fake_message)
+            return
         except Exception:
             pass
 
-    # --- 4️⃣ زر الأوامر الإدارية الذكي (مشرف / ادمن / admin) الحقيقي بالكامل ---
-    elif cmd_text in ("مشرف", "ادمن"):
+    # --- 6️⃣ زر القائمة الإدارية الذكي (مشرف / ادمن / admin) الفعلي بالكامل ---
+    elif cmd_text == "مشرف":
         try:
-            from systems.moderators import moderators
-            for handler in moderators.router.message.handlers:
-                await handler.callback(fake_message)
-                return
+            from systems.staff.staff import staff_menu # الدالة الفعلية بنظام الإشراف لديك
+            await staff_menu(fake_message)
+            return
         except Exception:
             pass
 
-    elif cmd_text == "admin":
+    elif cmd_text == "ادمن":
         try:
-            from systems.owner import owner
-            for handler in owner.router.message.handlers:
-                await handler.callback(fake_message)
-                return
+            from systems.owner.owner import admin_main_menu # الدالة الفعلية بنظام الأدمن لديك
+            await admin_main_menu(fake_message)
+            return
         except Exception:
             pass
+
+    elif cmd_text == "admin" and user_id == OWNER_ID:
+        try:
+            from systems.owner.keyboards import main_menu_keyboard
+            await callback.message.answer("⚙️ <b>لوحة التحكم الكاملة لمالك البوت (admin):</b>\n━━━━━━━━━━━━━━━\nاختر السستم الفرعي الذي ترغب في تعديله يدوياً:", reply_markup=main_menu_keyboard())
+            return
+        except Exception:
+            pass
+
+    # إذا حدث أي نقص في الاستدعاءات تظهر الرسالة الاحتياطية
+    await callback.message.answer(f"💬 لتشغيل ميزة «{cmd_text}» بنجاح، يرجى كتابتها صريحة في الشات.")
 
 # ===== مجدول الإرسال الدوري التلقائي المصلح =====
 
