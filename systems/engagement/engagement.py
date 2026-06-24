@@ -1,8 +1,10 @@
+# -*- coding: utf-8 -*-
 """
-نظام التفاعل التلقائي المطور (engagement).
+نظام التفاعل التلقائي المطور (engagement) - النسخة المصلحة والمربوطة بالكامل.
 """
 
 import asyncio
+import random
 from aiogram import Router, F, Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
@@ -13,8 +15,6 @@ from systems.moderators.permissions import get_user_rank
 from systems.engagement.notifications import messages
 
 router = Router(name="engagement")
-
-# ... (تبقى دوال القوائم الـ Keyboard والمعالجات القديمة لـ eng:cmd كما هي دون أي تعديل لكي لا تتأثر الأنظمة الأخرى)
 
 def _member_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -47,6 +47,8 @@ def _owner_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="⚙️ لوحة التحكم", callback_data="eng:cmd:admin")],
     ])
 
+# ===== معالج فتح القائمة الشخصية في الخاص =====
+
 @router.callback_query(F.data == "eng:open_menu")
 async def open_personal_menu(callback: CallbackQuery) -> None:
     if callback.from_user is None:
@@ -74,6 +76,8 @@ async def open_personal_menu(callback: CallbackQuery) -> None:
     except Exception:
         await callback.answer(messages.NEED_START, show_alert=True)
 
+# ===== تنفيذ الأوامر المصلحة والمربوطة بالكامل في الخاص =====
+
 @router.callback_query(F.data.startswith("eng:cmd:"))
 async def run_command(callback: CallbackQuery) -> None:
     if callback.from_user is None or callback.message is None:
@@ -93,7 +97,10 @@ async def run_command(callback: CallbackQuery) -> None:
 
     from systems.members import queries as members_queries
     from systems.members.notifications import messages as member_messages
+    from systems.shop import queries as shop_queries
+    from systems.shop import member_queries as shop_member_queries
 
+    # --- 1️⃣ زر معلوماتي (حساب) ---
     if cmd == "حساب":
         member = await members_queries.get_member(pool, user_id)
         if member is None:
@@ -107,8 +114,6 @@ async def run_command(callback: CallbackQuery) -> None:
         membership_name = None
 
         try:
-            from systems.shop import queries as shop_queries
-            from systems.shop import member_queries as shop_member_queries
             active_title_id = await shop_member_queries.get_active_title(pool, user_id)
             if active_title_id:
                 title = await shop_queries.get_title_by_id(pool, active_title_id)
@@ -129,20 +134,75 @@ async def run_command(callback: CallbackQuery) -> None:
         )
         await callback.message.answer(text)
 
-    elif cmd in ("عضوية", "سوق", "لقب", "ترتيب", "مشرف", "ادمن"):
-        cmd_map = {"عضوية": "عضويتي", "سوق": "سوق", "لقب": "مشترياتي", "ترتيب": "ترتيب", "مشرف": "مشرف", "ادمن": "ادمن"}
+    # --- 2️⃣ زر عضويتي (عضوية) ---
+    elif cmd == "عضوية":
+        try:
+            membership_status = await shop_member_queries.get_member_membership_status(pool, user_id)
+            if not membership_status:
+                await callback.message.answer("👑 <b>حالة العضوية:</b>\n━━━━━━━━━━━━━━━\nلا تمتلك أي عضوية نشطة حالياً. يمكنك تصفح السوق لشراء عضوية مميزة!")
+                return
+            
+            membership = await shop_queries.get_membership_by_id(pool, membership_status["membership_id"])
+            if not membership:
+                await callback.message.answer("❌ خطأ في قراءة تفاصيل عضوية الحساب.")
+                return
+
+            text = (
+                f"👑 <b>تفاصيل عضويتك النشطة بالسستم:</b>\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"🛡️ نوع الرتبة: {membership['name']}\n"
+                f"💰 المكافأة اليومية التابعة لها: {membership.get('daily_reward', 0)} 🪙\n"
+                f"✨ الميزات والخصائص الإضافية مفعّلة تلقائياً لملفك الشخصي."
+            )
+            await callback.message.answer(text)
+        except Exception:
+            await callback.message.answer("❌ حدث خطأ أثناء الاتصال بنظام العضويات.")
+
+    # --- 3️⃣ زر ألقابي (لقب) ---
+    elif cmd == "لقب":
+        try:
+            active_title_id = await shop_member_queries.get_active_title(pool, user_id)
+            if not active_title_id:
+                await callback.message.answer("🏷️ <b>ألقابك الشخصية:</b>\n━━━━━━━━━━━━━━━\nلا يوجد أي لقب مجهز فوق حسابك حالياً. يمكنك شراء وتجهيز الألقاب من ميزة السوق.")
+                return
+
+            title = await shop_queries.get_title_by_id(pool, active_title_id)
+            if not title:
+                await callback.message.answer("❌ فشل في جلب تفاصيل اللقب المجهز.")
+                return
+
+            text = (
+                f"🏷️ <b>لقبك الحالي النشط بالسستم:</b>\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"✨ اللقب النشط: 【 {title['name']} 】\n"
+                f"🪙 سعر شراء اللقب: {title.get('price', 0)} 🪙"
+            )
+            await callback.message.answer(text)
+        except Exception:
+            await callback.message.answer("❌ حدث خطأ أثناء الاتصال بنظام الألقاب.")
+
+    # --- 4️⃣ زر السوق (سوق) ---
+    elif cmd == "سوق":
+        try:
+            await callback.message.answer("🛒 **أهلاً بك في المتجر الشامل**\n━━━━━━━━━━━━━━━\n💬 لرؤية قائمة المنتجات وشراء الألقاب أو العضويات التفاعلية، يرجى كتابة الأمر `سوق` أو `المتجر` داخل المجموعة لفتح قائمة الأسعار وشراء العناصر برصيدك!")
+        except Exception:
+            await callback.message.answer("❌ حدث خطأ أثناء الاتصال بنظام المتجر.")
+
+    # --- 5️⃣ باقي الأوامر الإدارية والعامة (ترتيب، مشرف، ادمن) ---
+    elif cmd in ("ترتيب", "مشرف", "ادمن"):
+        cmd_map = {"ترتيب": "ترتيب", "مشرف": "مشرف", "ادمن": "ادمن"}
         await callback.message.answer(f"💬 اكتب «{cmd_map.get(cmd, cmd)}» في المجموعة لفتح هذه الميزة.")
+        
     elif cmd == "admin" and (user_id == OWNER_ID):
         await callback.message.answer("💬 اكتب «admin» في المجموعة لفتح لوحة التحكم.")
 
-# ===== مجدول الإرسال الدوري المصلح والمطور =====
+# ===== مجدول الإرسال الدوري المصلح ذو الاستجابة السريعة =====
 
 async def engagement_scheduler_loop(bot: Bot) -> None:
     while True:
         pool = await get_pool()
         settings = await engagement_queries.get_engagement_settings(pool)
         
-        # الفحص السريع: إذا كان مفعل وفيه رسائل يرسل وينام الوقت المحدد، وإلا ينام 15 ثانية فقط ليلقط التحديثات يدوياً
         if settings.get("enabled", False) and settings.get("messages"):
             try:
                 await _send_engagement_message(bot)
@@ -151,6 +211,7 @@ async def engagement_scheduler_loop(bot: Bot) -> None:
             interval = settings.get("interval_seconds", 3600)
             await asyncio.sleep(max(interval, 30))
         else:
+            # إذا تعطل أو فرغ السجل، ينام 15 ثانية فقط ليلقط أي تحديث فوري باللوحة
             await asyncio.sleep(15)
 
 async def _send_engagement_message(bot: Bot) -> None:
@@ -165,7 +226,6 @@ async def _send_engagement_message(bot: Bot) -> None:
     if not group_id:
         return
 
-    # جلب الرسائل المفعلة فقط للتدوير بينها
     active_msgs = [m for m in settings["messages"] if m.get("active", True)]
     if not active_msgs:
         return
@@ -188,7 +248,6 @@ async def _send_engagement_message(bot: Bot) -> None:
         await bot.send_message(chat_id=group_id, text=text, reply_markup=keyboard)
         await engagement_queries.add_to_engagement_history(pool, text)
         
-        # حفظ المؤشر للرسالة التالية
         settings["current_index"] = (idx + 1) % len(active_msgs)
         await engagement_queries.set_engagement_settings(pool, settings)
     except Exception:
