@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-نظام التفاعل التلقائي المطور (engagement) - يدعم عرض الألقاب كأزرار تبديل تفاعلية بالخاص.
+نظام التفاعل التلقائي المطور (engagement) - جلب البيانات الحقيقية من جداول السستم مباشرة.
 """
 
 import asyncio
@@ -85,7 +85,7 @@ async def open_personal_menu(callback: CallbackQuery) -> None:
     except Exception:
         await callback.answer(messages.NEED_START, show_alert=True)
 
-# ===== المعالج التفاعلي الذكي للأوامر والتبديل المباشر للألقاب =====
+# ===== المعالج الرئيسي المصلح لجلب بيانات الجداول الحقيقية للـ Shop والـ Leaderboard =====
 
 @router.callback_query(F.data.startswith("eng:cmd:"))
 async def run_command(callback: CallbackQuery) -> None:
@@ -105,7 +105,6 @@ async def run_command(callback: CallbackQuery) -> None:
 
     await callback.answer()
 
-    # استدعاء ملفات الاستعلامات والنصوص الحقيقية من بقية أنظمتك
     from systems.members import queries as members_queries
     from systems.members.notifications import messages as member_messages
     from systems.shop import queries as shop_queries
@@ -115,7 +114,7 @@ async def run_command(callback: CallbackQuery) -> None:
     if cmd_text == "حساب":
         member = await members_queries.get_member(pool, user_id)
         if member is None:
-            await callback.message.answer("❌ لم يتم تسجيلك بعد.")
+            await callback.message.answer("❌ لم يتم تسجيلك بعد. أرسل رسالة في المجموعة أولاً.")
             return
 
         from systems.members import queries as mq
@@ -146,61 +145,69 @@ async def run_command(callback: CallbackQuery) -> None:
         await callback.message.answer(text)
         return
 
-    # --- 2️⃣ زر السوق التفاعلي بالخاص ---
-    elif cmd_text == "s_shop" or cmd_text == "سوق":
+    # --- 2️⃣ زر السوق الحقيقي (قراءة دقيقة ومباشرة من جدول إعدادات المتجر لديك) ---
+    elif cmd_text == "سوق":
         try:
-            shop_data = await get_setting(pool, "shop_settings", {})
-            memberships = shop_data.get("memberships", []) if isinstance(shop_data, dict) else []
-            titles = shop_data.get("titles", []) if isinstance(shop_data, dict) else []
+            # جلب مصفوفات السعر والمنتجات المضافة من دوال نظامك الحقيقي لضمان التطابق
+            shop_data = await shop_queries.get_shop_settings(pool) or {}
+            memberships = shop_data.get("memberships", [])
+            titles = shop_data.get("titles", [])
             
-            text = "🛒 <b>سوق البوت الرسمي المتاح حالياً بالخاص:</b>\n━━━━━━━━━━━━━━━\n"
+            text = "🛒 <b>سوق وسوبرماركت البوت التفاعلي (الخاص):</b>\n━━━━━━━━━━━━━━━\n"
             kb = []
-            if memberships:
-                text += "👑 <b>العضويات:</b>\n"
-                for m in memberships:
-                    text += f"▫️ {m.get('name')} — السعر: <code>{m.get('price')}</code> 🪙\n"
-                    kb.append([InlineKeyboardButton(text=f"👑 شراء: {m.get('name')}", callback_data=f"shop:buy_membership:{m.get('id')}")])
-            if titles:
-                text += "\n🏷️ <b>الألقاب المتاحة:</b>\n"
-                for t in titles:
-                    text += f"▫️ {t.get('name')} — السعر: <code>{t.get('price')}</code> 🪙\n"
-                    kb.append([InlineKeyboardButton(text=f"🏷️ شراء: {t.get('name')}", callback_data=f"shop:buy_title:{t.get('id')}")])
             
+            if memberships:
+                text += "👑 <b>العضويات المتوفرة بالمتجر:</b>\n"
+                for m in memberships:
+                    text += f"▫️ {m.get('name')} — السعر: <code>{m.get('price', 0)}</code> 🪙\n"
+                    # تحويل الأزرار الشفافة لتطلق نفس Trigger الشراء الفعلي المسجل في كود المتجر الأساسي لديك
+                    kb.append([InlineKeyboardButton(text=f"👑 شراء: {m.get('name')}", callback_data=f"shop:buy_membership:{m.get('id')}")])
+            
+            if titles:
+                text += "\n🏷️ <b>الألقاب الخاصة المتوفرة بالمتجر:</b>\n"
+                for t in titles:
+                    text += f"▫️ {t.get('name')} — السعر: <code>{t.get('price', 0)}</code> 🪙\n"
+                    kb.append([InlineKeyboardButton(text=f"🏷️ شراء: {t.get('name')}", callback_data=f"shop:buy_title:{t.get('id')}")])
+                    
+            if not memberships and not titles:
+                text += "🛍️ المتجر فارغ حالياً، لم يتم إضافة أي منتجات من لوحة التحكم بعد."
+                
             kb.append([InlineKeyboardButton(text="🔙 العودة للقائمة", callback_data="eng:cmd:back_main")])
             await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+            return
         except Exception:
-            await callback.message.answer("❌ تعذر تحميل واجهة السوق حالياً.")
+            await callback.message.answer("❌ تعذر تحميل واجهة معروضات السوق بالخاص حالياً.")
+            return
 
-    # --- 3️⃣ زر ألقابي المطور (يعرض الألقاب المملوكة كأزرار للتبديل الفوري) ---
+    # --- 3️⃣ زر ألقابي (مشترياتي) الحقيقي (يعرض الألقاب المملوكة كأزرار للتبديل) ---
     elif cmd_text == "مشترياتي":
         try:
-            # جلب كل الألقاب المملوكة للعضو من قاعدة البيانات الحقيقية لديك
+            # جلب الألقاب المشتراة واللقب النشط من جداول سستم الألقاب الفعلي لديك فوق قاعدة البيانات
             owned_titles = await shop_member_queries.get_member_titles(pool, user_id) or []
             active_title_id = await shop_member_queries.get_active_title(pool, user_id)
 
             if not owned_titles:
-                await callback.message.answer("🏷️ <b>ألقابك الشخصية:</b>\n━━━━━━━━━━━━━━━\n❌ أنت لا تمتلك أي ألقاب حالياً. يمكنك شراؤها من السوق!")
+                await callback.message.answer("🏷️ <b>ألقابك الشخصية:</b>\n━━━━━━━━━━━━━━━\n❌ أنت لا تمتلك أي ألقاب حالياً بالسستم لتجهيزها.")
                 return
 
-            text = "🏷️ <b>لوحة إدارة ألقابك الشخصية:</b>\n━━━━━━━━━━━━━━━\n💡 اضغط على اسم اللقب أدناه لتجهيزه وتفعيله فوق حسابك فوراً:\n"
+            text = "🏷️ <b>لوحة إدارة ألقابك الشخصية بالخاص:</b>\n━━━━━━━━━━━━━━━\n💡 اضغط على اسم اللقب أدناه لتجهيزه وتفعيله فوق حسابك فوراً:\n"
             kb = []
 
             for t_id in owned_titles:
-                title_data = await shop_queries.get_title_by_id(pool, t_id)
+                title_data = await shop_queries.get_title_by_id(pool, int(t_id))
                 if title_data:
                     is_active = (str(t_id) == str(active_title_id))
                     status_emoji = "✅ مجهز" if is_active else "💤 إجعل نشط"
                     text += f"▪️ 【 {title_data['name']} 】 {'(نشط حالياً)' if is_active else ''}\n"
-                    
-                    # إنشاء زر لكل لقب؛ عند الضغط يرسل تفعيل اللقب الحقيقي لسستم الـ shop
+                    # عند الضغط يوجه الحدث لمعالج التبديل الفوري المبرمج بالأسفل
                     kb.append([InlineKeyboardButton(text=f"{title_data['name']} ── {status_emoji}", callback_data=f"eng:set_title:{t_id}")])
 
             kb.append([InlineKeyboardButton(text="🔙 العودة للقائمة", callback_data="eng:cmd:back_main")])
             await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
         except Exception:
-            await callback.message.answer("❌ حدث خطأ أثناء تحميل لوحة الألقاب الخاصة بك.")
+            await callback.message.answer("❌ حدث خطأ أثناء جلب قائمة ألقابك الخاصة.")
 
-    # --- 4️⃣ زر عضويتي التفاعلي بالخاص ---
+    # --- 4️⃣ زر عضويتي الحقيقي بالخاص ---
     elif cmd_text == "عضويتي":
         try:
             membership_status = await shop_member_queries.get_member_membership_status(pool, user_id)
@@ -218,9 +225,9 @@ async def run_command(callback: CallbackQuery) -> None:
             kb = [[InlineKeyboardButton(text="🔙 العودة", callback_data="eng:cmd:back_main")]]
             await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
         except Exception:
-            pass
+            await callback.message.answer("❌ تعذر جلب تفاصيل نظام العضويات حالياً.")
 
-    # --- 5️⃣ زر الترتيب ---
+    # --- 5️⃣ زر الترتيب (قراءة مباشرة توب 5 من جدول members الحقيقي لديك) ---
     elif cmd_text == "ترتيب":
         try:
             async with pool.acquire() as conn:
@@ -230,10 +237,24 @@ async def run_command(callback: CallbackQuery) -> None:
                 text += f"{idx} - {r['full_name']} | الرصيد: <code>{r['balance']:,}</code> د.ع\n"
             kb = [[InlineKeyboardButton(text="🔙 العودة", callback_data="eng:cmd:back_main")]]
             await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+            return
+        except Exception:
+            await callback.message.answer("❌ تعذر تحميل قائمة الصدارة حالياً.")
+
+    # --- 6️⃣ زر الأوامر الإدارية الفرعي المخصص حسب الرتبة بدقة ---
+    elif cmd_text in ("مشرف", "ادمن"):
+        await callback.message.answer(f"👮 <b>مرحباً بك في لوحة تحكم الإدارة الفرعية بالخاص:</b>\n━━━━━━━━━━━━━━━\nرتبتك الحالية بالسستم: {rank.upper()}\nاستخدم أزرار لوحة المالك الرئيسية لإدارة العقوبات وحماية الروم.")
+        return
+
+    elif cmd_text == "admin" and user_id == OWNER_ID:
+        try:
+            from systems.owner.keyboards import main_menu_keyboard
+            await callback.message.answer("⚙️ <b>لوحة التحكم الكاملة لمالك البوت الأصلي (admin):</b>\n━━━━━━━━━━━━━━━\nاختر السستم الفرعي الذي ترغب في تعديله يدوياً:", reply_markup=main_menu_keyboard())
+            return
         except Exception:
             pass
 
-    # --- زر العودة للقائمة الرئيسية الإدارية أو العادية ---
+    # زر العودة للقائمة الرئيسية
     elif cmd_text == "back_main":
         if user_id == OWNER_ID:
             await callback.message.edit_reply_markup(reply_markup=_owner_menu_keyboard())
@@ -242,8 +263,7 @@ async def run_command(callback: CallbackQuery) -> None:
         else:
             await callback.message.edit_reply_markup(reply_markup=_member_menu_keyboard())
 
-
-# ===== معالج التبديل الفوري والنشط للقب المختار من الأزرار =====
+# ===== معالج التبديل الفوري والنشط للقب المختار من الأزرار بالخاص 100% =====
 
 @router.callback_query(F.data.startswith("eng:set_title:"))
 async def switch_member_title_instantly(callback: CallbackQuery) -> None:
@@ -259,15 +279,15 @@ async def switch_member_title_instantly(callback: CallbackQuery) -> None:
     from systems.shop import queries as shop_queries
 
     try:
-        # استدعاء دالة التجهيز الحقيقية في قاعدة البيانات الخاصة بسستمك
+        # تنفيذ عملية التجهيز الحقيقية وتحديث جدول الألقاب النشطة لديك
         await shop_member_queries.set_active_title(pool, user_id, int(title_id))
         title_data = await shop_queries.get_title_by_id(pool, int(title_id))
         
         await callback.answer(f"✅ تم تجهيز وارتداء لقب 【 {title_data['name']} 】 بنجاح!", show_alert=True)
         
-        # إعادة تحديث واجهة الأزرار فوراً لتظهر علامة الصح المجهزة فوق اللقب الجديد
+        # تحديث فوري لواجهة الأزرار أمام العضو لإظهار علامة الصح (✅ مجهز) على اللقب الجديد
         owned_titles = await shop_member_queries.get_member_titles(pool, user_id) or []
-        text = "🏷️ <b>لوحة إدارة ألقابك الشخصية:</b>\n━━━━━━━━━━━━━━━\n💡 اضغط على اسم اللقب أدناه لتجهيزه وتفعيله فوق حسابك فوراً:\n"
+        text = "🏷️ <b>لوحة إدارة ألقابك الشخصية بالخاص:</b>\n━━━━━━━━━━━━━━━\n💡 اضغط على اسم اللقب أدناه لتجهيزه وتفعيله فوق حسابك فوراً:\n"
         kb = []
 
         for t_id in owned_titles:
@@ -281,15 +301,15 @@ async def switch_member_title_instantly(callback: CallbackQuery) -> None:
         kb.append([InlineKeyboardButton(text="🔙 العودة للقائمة", callback_data="eng:cmd:back_main")])
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
     except Exception:
-        await callback.answer("❌ تعذر تبديل اللقب، يرجى المحاولة لاحقاً.")
+        await callback.answer("❌ تعذر تبديل اللقب حالياً.")
 
-
-# ===== مجدول الإرسال الدوري التلقائي المصلح =====
+# ===== مجدول الإرسال الدوري الدوري المصلح ذو الأداء المستقر =====
 
 async def engagement_scheduler_loop(bot: Bot) -> None:
     while True:
         pool = await get_pool()
         settings = await engagement_queries.get_engagement_settings(pool)
+        
         if settings.get("enabled", False) and settings.get("messages"):
             try:
                 await _send_engagement_message(bot)
@@ -303,6 +323,7 @@ async def engagement_scheduler_loop(bot: Bot) -> None:
 async def _send_engagement_message(bot: Bot) -> None:
     pool = await get_pool()
     settings = await engagement_queries.get_engagement_settings(pool)
+
     if not settings.get("enabled", False) or not settings.get("messages"):
         return
 
@@ -325,10 +346,13 @@ async def _send_engagement_message(bot: Bot) -> None:
     keyboard = None
     if current_msg.get("button_enabled", True):
         button_text = current_msg.get("button_text", "📋 قائمتي")
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=button_text, callback_data="eng:open_menu")]])
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=button_text, callback_data="eng:open_menu")]
+        ])
 
     try:
         await bot.send_message(chat_id=group_id, text=text, reply_markup=keyboard)
+        
         settings["current_index"] = (idx + 1) % len(active_msgs)
         await engagement_queries.set_engagement_settings(pool, settings)
     except Exception:
