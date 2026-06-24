@@ -1,132 +1,175 @@
+# -*- coding: utf-8 -*-
 """
-نظام الإداريين - الملف الرئيسي.
-
-يحتوي على:
-- أمر "ترقية" بالرد على عضو (member -> moderator -> admin) - المالك فقط
-- أمر "تخفيض" بالرد على عضو (admin -> moderator -> member) - المالك فقط
-- فلتر عام: أي رسالة تبدأ بـ "/" في المجموعة تُحذف فوراً بدون أي رد
-
-هذا الملف مستقل - حذفه أو تعديله لا يؤثر على أي نظام آخر،
-لكن أنظمة أخرى (rewards, moderation, archive) تستخدم
-systems/moderators/permissions.py للتحقق من الصلاحيات.
+نظام الإشراف والعقوبات الإدارية المطور (moderators) - مدمج به أمر الإبلاغ المتعدد الصيغ.
 """
 
+import asyncio
 from aiogram import Router, F
-from aiogram.types import Message
-
+from aiogram.filters import Command
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
 from core.database import get_pool
-from core.config import OWNER_ID
-from systems.members import queries as members_queries
-from systems.moderators import queries
-from systems.moderators.notifications import messages
-
+from systems.moderators.permissions import get_user_rank
 
 router = Router(name="moderators")
 
+# قائمة كافة صيغ الكلمات والأوامر الخاصة بالتبليغ
+REPORT_KEYWORDS = {"ابلاغ", "أبلاغ", "إبلاغ", "تبليغ", "بلغ"}
 
-PROMOTE_COMMANDS = {"ترقية"}
-DEMOTE_COMMANDS = {"تخفيض"}
-
-
-# ===== فلتر عام: حذف أي رسالة تبدأ بـ "/" في المجموعة =====
+# =====================================================================
+# 1️⃣ أمر الإبلاغ السري المتطور (يستقبل كافة الصيغ ويعمل بالرد)
+# =====================================================================
 @router.message(
-    F.chat.type.in_({"group", "supergroup"}),
-    F.text.startswith("/"),
+    F.chat.type.in_({"group", "supergroup"}) & 
+    (Command(list(REPORT_KEYWORDS)) | F.text.in_(REPORT_KEYWORDS))
 )
-async def delete_slash_commands(message: Message) -> None:
-    """
-    أي رسالة تبدأ بـ "/" في المجموعة تُحذف فوراً.
-    البوت لا يتفاعل معها أو يرد عليها أبداً، بغض النظر عن كاتبها.
-    """
+async def report_message_handler(message: Message) -> None:
+    # التحقق من وجود رد (Reply)
+    if not message.reply_to_message:
+        msg = await message.answer("⚠️ يرجى استخدام أمر «<b>إبلاغ</b>» بالرد على الرسالة المخالفة!")
+        await asyncio.sleep(4)
+        try:
+            await message.delete()
+            await msg.delete()
+        except Exception:
+            pass
+        return
+
+    pool = await get_pool()
+    reporter = message.from_user       
+    offender = message.reply_to_message.from_user 
+    
+    if offender.is_bot:
+        await message.answer("❌ لا يمكنك الإبلاغ عن البوتات.")
+        return
+
+    # حذف أمر الإبلاغ فوراً لحماية المبلّغ ونظافة الشات
     try:
         await message.delete()
     except Exception:
         pass
 
+    # صياغة نص البلاغ للمشرفين
+    report_text = (
+        f"🚨 <b>بلاغ جديد من أعضاء المجموعة!</b>\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"👤 <b>المُبلِغ:</b> {reporter.full_name} (<code>{reporter.id}</code>)\n"
+        f"👤 <b>المخالف:</b> {offender.full_name} (<code>{offender.id}</code>)\n\n"
+        f"💬 <b>نص المخالفة:</b>\n"
+        f"<i>« {message.reply_to_message.text or 'محتوى غير نصي (صورة/ملف)'} »</i>"
+    )
 
-@router.message(
-    F.chat.type.in_({"group", "supergroup"}),
-    F.text.in_(PROMOTE_COMMANDS),
-)
-async def promote_member(message: Message) -> None:
-    """
-    يرقي العضو المردود عليه لرتبة أعلى (member -> moderator -> admin).
-    المالك فقط يمكنه استخدام هذا الأمر.
-    """
-    if message.from_user is None:
-        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔗 الانتقال للمخالفة", url=message.reply_to_message.url)]
+    ])
 
-    if message.from_user.id != OWNER_ID:
-        return
+    # جلب المشرفين وإرسال البلاغ لهم بالخاص
+    try:
+        async with pool.acquire() as conn:
+            moderators = await conn.fetch("SELECT user_id FROM moderators_list WHERE is_active = TRUE")
+            
+        for mod in moderators:
+            try:
+                await message.bot.send_message(chat_id=mod["user_id"], text=report_text, reply_markup=kb)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
-    if not message.reply_to_message or not message.reply_to_message.from_user:
-        return
+    # تأكيد الاستلام المؤقت في الجروب
+    confirm_msg = await message.answer(f"✅ شكراً {reporter.first_name}، تم إرسال بلاغك للمشرفين في الخاص بنجاح.")
+    await asyncio.sleep(4)
+    try:
+        await confirm_msg.delete()
+    except Exception:
+        pass
 
-    target = message.reply_to_message.from_user
+
+# =====================================================================
+# 2️⃣ أوامر العقوبات الإدارية الأساسية (كتم، حظر، تحذير)
+# =====================================================================
+
+# أمر الكتم
+@router.message(F.chat.type.in_({"group", "supergroup"}) & (Command("كتم") | (F.text == "كتم")))
+async def mute_user_handler(message: Message) -> None:
     pool = await get_pool()
-
-    await members_queries.ensure_member_exists(
-        pool,
-        user_id=target.id,
-        username=target.username,
-        full_name=target.full_name,
-    )
-
-    new_rank = await queries.promote(pool, target.id)
-
-    if new_rank is None:
-        await message.reply(messages.ALREADY_TOP_RANK)
+    user_rank = await get_user_rank(pool, message.from_user.id)
+    
+    if user_rank not in ("admin", "moderator"):
+        return 
+        
+    if not message.reply_to_message:
+        await message.answer("⚠️ يرجى استخدام الأمر بالرد على الشخص المطلوب كتمه.")
         return
 
-    text = messages.promotion_notification(
-        full_name=target.full_name,
-        username=target.username,
-        new_rank=new_rank,
-        by_full_name=message.from_user.full_name,
-    )
-
-    await message.answer(text)
+    target_user = message.reply_to_message.from_user
+    try:
+        await message.chat.restrict(user_id=target_user.id, permissions=ChatPermissions(can_send_messages=False))
+        await message.answer(f"🔒 تم كتم العضو <b>{target_user.full_name}</b> بنجاح بواسطة المشرف.")
+    except Exception:
+        await message.answer("❌ تعذر تنفيذ أمر الكتم، تأكد من صلاحيات البوت.")
 
 
-@router.message(
-    F.chat.type.in_({"group", "supergroup"}),
-    F.text.in_(DEMOTE_COMMANDS),
-)
-async def demote_member(message: Message) -> None:
-    """
-    يخفض العضو المردود عليه لرتبة أدنى (admin -> moderator -> member).
-    المالك فقط يمكنه استخدام هذا الأمر.
-    """
-    if message.from_user is None:
-        return
-
-    if message.from_user.id != OWNER_ID:
-        return
-
-    if not message.reply_to_message or not message.reply_to_message.from_user:
-        return
-
-    target = message.reply_to_message.from_user
+# أمر إلغاء الكتم
+@router.message(F.chat.type.in_({"group", "supergroup"}) & (Command("الغاء الكتم") | (F.text == "الغاء الكتم") | (F.text == "إلغاء الكتم")))
+async def unmute_user_handler(message: Message) -> None:
     pool = await get_pool()
-
-    await members_queries.ensure_member_exists(
-        pool,
-        user_id=target.id,
-        username=target.username,
-        full_name=target.full_name,
-    )
-
-    new_rank = await queries.demote(pool, target.id)
-
-    if new_rank is None:
-        await message.reply(messages.ALREADY_MEMBER)
+    user_rank = await get_user_rank(pool, message.from_user.id)
+    
+    if user_rank not in ("admin", "moderator"):
+        return
+        
+    if not message.reply_to_message:
+        await message.answer("⚠️ يرجى استخدام الأمر بالرد على الشخص لإلغاء كتمه.")
         return
 
-    text = messages.demotion_notification(
-        full_name=target.full_name,
-        username=target.username,
-        new_rank=new_rank,
-        by_full_name=message.from_user.full_name,
-    )
+    target_user = message.reply_to_message.from_user
+    try:
+        await message.chat.restrict(
+            user_id=target_user.id, 
+            permissions=ChatPermissions(can_send_messages=True, can_send_media_messages=True, can_send_other_messages=True)
+        )
+        await message.answer(f"🔓 تم إلغاء كتم العضو <b>{target_user.full_name}</b> ويمكنه الكتابة الآن.")
+    except Exception:
+        pass
 
-    await message.answer(text)
+
+# أمر الحظر
+@router.message(F.chat.type.in_({"group", "supergroup"}) & (Command("حظر") | (F.text == "حظر")))
+async def ban_user_handler(message: Message) -> None:
+    pool = await get_pool()
+    user_rank = await get_user_rank(pool, message.from_user.id)
+    
+    if user_rank not in ("admin", "moderator"):
+        return
+        
+    if not message.reply_to_message:
+        await message.answer("⚠️ يرجى استخدام الأمر بالرد على الشخص لحظره.")
+        return
+
+    target_user = message.reply_to_message.from_user
+    try:
+        await message.chat.ban(user_id=target_user.id)
+        await message.answer(f"🚷 تم حظر وطرد العضو <b>{target_user.full_name}</b> من المجموعة.")
+    except Exception:
+        pass
+
+
+# أمر إلغاء الحظر
+@router.message(F.chat.type.in_({"group", "supergroup"}) & (Command("الغاء الحظر") | (F.text == "الغاء الحظر") | (F.text == "إلغاء الحظر")))
+async def unban_user_handler(message: Message) -> None:
+    pool = await get_pool()
+    user_rank = await get_user_rank(pool, message.from_user.id)
+    
+    if user_rank not in ("admin", "moderator"):
+        return
+        
+    if not message.reply_to_message:
+        await message.answer("⚠️ يرجى استخدام الأمر بالرد على الرسالة لإلغاء الحظر.")
+        return
+
+    target_user = message.reply_to_message.from_user
+    try:
+        await message.chat.unban(user_id=target_user.id)
+        await message.answer(f"✅ تم إلغاء حظر <b>{target_user.full_name}</b> ويمكنه الدخول مجدداً.")
+    except Exception:
+        pass
