@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-نظام التفاعل التلقائي المطور (engagement) - النسخة المصلحة لربط الدوال الحقيقية بالخاص مباشرة وبأعلى كفاءة.
+نظام التفاعل التلقائي المطور (engagement) - الربط الصحيح والمباشر مع دوال المتجر بالخاص.
 """
 
 import asyncio
@@ -11,7 +11,6 @@ from core.database import get_pool, get_setting
 from core.config import OWNER_ID
 from systems.engagement import queries as engagement_queries
 from systems.moderators.permissions import get_user_rank
-from systems.engagement.notifications import messages
 
 router = Router(name="engagement")
 
@@ -63,6 +62,7 @@ async def open_personal_menu(callback: CallbackQuery) -> None:
     else:
         keyboard = _member_menu_keyboard()
 
+    from systems.engagement.notifications import messages
     await callback.bot.send_message(chat_id=user_id, text=messages.member_menu_text(full_name), reply_markup=keyboard)
     await callback.answer(messages.MENU_OPENED)
 
@@ -92,7 +92,7 @@ async def run_command(callback: CallbackQuery) -> None:
         text=cmd_text
     )
 
-    # --- تشغيل دالة حساب (معلوماتي) داخلياً بنجاح ---
+    # --- تشغيل دالة حساب (معلوماتي) بنجاح ---
     if cmd_text == "حساب":
         from systems.members import queries as members_queries
         from systems.members.notifications import messages as member_messages
@@ -132,7 +132,7 @@ async def run_command(callback: CallbackQuery) -> None:
         await callback.message.answer(text)
         return
 
-    # --- تشغيل دوال الـ shop المصلحة الحصرية بالخاص ---
+    # --- استدعاء الأزرار المصلحة من نظام الـ shop مباشرة لحساب الخاص ---
     elif cmd_text == "سوق":
         from systems.shop.shop import shop_menu_private
         await shop_menu_private(fake_message)
@@ -143,7 +143,7 @@ async def run_command(callback: CallbackQuery) -> None:
         from systems.shop.shop import titles_private
         await titles_private(fake_message)
         
-    # --- الترتيب والإدارة المباشرة ---
+    # --- الترتيب ولوحة المالك (admin) ---
     elif cmd_text == "ترتيب":
         try:
             async with pool.acquire() as conn:
@@ -170,6 +170,7 @@ async def engagement_scheduler_loop(bot: Bot) -> None:
         settings = await engagement_queries.get_engagement_settings(pool)
         if settings.get("enabled", False) and settings.get("messages"):
             try:
+                from systems.engagement.engagement import _send_engagement_message
                 await _send_engagement_message(bot)
             except Exception:
                 pass
@@ -207,7 +208,6 @@ async def _send_engagement_message(bot: Bot) -> None:
 
     try:
         await bot.send_message(chat_id=group_id, text=text, reply_markup=keyboard)
-        await engagement_queries.add_to_engagement_history(pool, text)
         settings["current_index"] = (idx + 1) % len(active_msgs)
         await engagement_queries.set_engagement_settings(pool, settings)
     except Exception:
