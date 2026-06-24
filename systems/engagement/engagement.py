@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-نظام التفاعل التلقائي المطور (engagement) - النسخة المصلحة لإرسال الأوامر الصريحة بالخاص 100%.
+نظام التفاعل التلقائي المطور (engagement) - تشغيل الأنظمة الأخرى حقيقيًا ومباشرًا بالخاص.
 """
 
 import asyncio
@@ -89,7 +89,7 @@ async def open_personal_menu(callback: CallbackQuery) -> None:
     except Exception:
         await callback.answer(messages.NEED_START, show_alert=True)
 
-# ===== المعالج الرئيسي المصلح لتشغيل كل نظام كأمر نصي مستقل بالكامل =====
+# ===== المعالج الرئيسي المصلح كلياً لربط الدوال الحقيقية بالخاص مباشرة =====
 
 @router.callback_query(F.data.startswith("eng:cmd:"))
 async def run_command(callback: CallbackQuery) -> None:
@@ -109,6 +109,15 @@ async def run_command(callback: CallbackQuery) -> None:
             return
 
     await callback.answer()
+
+    # إنشاء رسالة وهمية لتغذية الدوال الأصلية
+    fake_message = Message(
+        message_id=callback.message.message_id,
+        date=callback.message.date,
+        chat=callback.message.chat,
+        from_user=callback.from_user,
+        text=cmd_text
+    )
 
     # --- 1️⃣ زر معلوماتي (حساب) ---
     if cmd_text == "حساب":
@@ -151,35 +160,53 @@ async def run_command(callback: CallbackQuery) -> None:
         await callback.message.answer(text)
         return
 
-    # --- 2️⃣ لباقي الأزرار: محاكاة وضخ الحدث للأوامر الحقيقية دون إظهار المعرف أو التنبيهات المزعجة ---
-    fake_message = Message(
-        message_id=callback.message.message_id,
-        date=callback.message.date,
-        chat=callback.message.chat,
-        from_user=callback.from_user,
-        text=cmd_text
-    )
-
-    try:
-        # نقوم بالبحث عن الـ router المخصص لكل نظام وجعل الأنظمة الأخرى تنفذ الأمر تلقائياً في الخاص
-        if cmd_text == "سوق" or cmd_text == "عضويتي" or cmd_text == "مشترياتي":
+    # --- 2️⃣ تشغيل نظام السوق واللقب والعضوية الحقيقي بطلب مباشر من ملف الـ shop لديك ---
+    elif cmd_text in ("سوق", "عضويتي", "مشترياتي"):
+        try:
             from systems.shop import shop as shop_system
-            await shop_system.router.propagate_event(event=fake_message, bot=callback.bot)
-            
-        elif cmd_text == "ترتيب":
+            if cmd_text == "سوق" and hasattr(shop_system, "cmd_shop"):
+                await shop_system.cmd_shop(fake_message)
+            elif cmd_text == "عضويتي" and hasattr(shop_system, "cmd_membership"):
+                await shop_system.cmd_membership(fake_message)
+            elif cmd_text == "مشترياتي" and hasattr(shop_system, "cmd_titles"):
+                await shop_system.cmd_titles(fake_message)
+            else:
+                # محاولة تمريرها للـ handlers المسجلة داخل راوتر الشوب كأمر
+                for handler in shop_system.router.message.handlers:
+                    if hasattr(handler, "callback") and (cmd_text in str(handler.filters)):
+                        await handler.callback(fake_message)
+                        return
+        except Exception:
+            pass
+
+    # --- 3️⃣ تشغيل نظام الترتيب الحقيقي من ملف الـ leaderboard ---
+    elif cmd_text == "ترتيب":
+        try:
             from systems.wallet import leaderboard
-            await leaderboard.router.propagate_event(event=fake_message, bot=callback.bot)
-            
-        elif cmd_text == "مشرف" or cmd_text == "ادمن":
+            for handler in leaderboard.router.message.handlers:
+                await handler.callback(fake_message)
+                return
+        except Exception:
+            pass
+
+    # --- 4️⃣ زر الأوامر الإدارية الذكي (مشرف / ادمن / admin) الحقيقي بالكامل ---
+    elif cmd_text in ("مشرف", "ادمن"):
+        try:
             from systems.moderators import moderators
-            await moderators.router.propagate_event(event=fake_message, bot=callback.bot)
-            
-        elif cmd_text == "admin":
+            for handler in moderators.router.message.handlers:
+                await handler.callback(fake_message)
+                return
+        except Exception:
+            pass
+
+    elif cmd_text == "admin":
+        try:
             from systems.owner import owner
-            await owner.router.propagate_event(event=fake_message, bot=callback.bot)
-    except Exception:
-        # حل بديل احتياطي في حال استمرار قيود محادثة الخاص في السستم الأصلي
-        await callback.message.answer(f"💬 لتشغيل ميزة «{cmd_text}» بنجاح، يرجى كتابتها صريحة في الشات.")
+            for handler in owner.router.message.handlers:
+                await handler.callback(fake_message)
+                return
+        except Exception:
+            pass
 
 # ===== مجدول الإرسال الدوري التلقائي المصلح =====
 
