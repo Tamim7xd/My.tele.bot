@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-نظام التفاعل التلقائي المطور (engagement) - النسخة المربوطة بالسوق المصلح مباشرة.
+نظام التفاعل التلقائي المطور (engagement) - النسخة المصلحة لربط الدوال الحقيقية بالخاص مباشرة وبأعلى كفاءة.
 """
 
 import asyncio
@@ -75,6 +75,12 @@ async def run_command(callback: CallbackQuery) -> None:
     cmd_text = callback.data.split(":")[-1]
     user_id = callback.from_user.id
     pool = await get_pool()
+    rank = await get_user_rank(pool, user_id)
+
+    if cmd_text in ("مشرف", "ادمن", "admin"):
+        if user_id != OWNER_ID and rank not in ("admin", "moderator"):
+            await callback.answer("⚠️ هذا الزر مخصص للإدارة فقط.")
+            return
 
     await callback.answer()
 
@@ -86,16 +92,123 @@ async def run_command(callback: CallbackQuery) -> None:
         text=cmd_text
     )
 
-    # تشغيل دوال الـ shop المصلحة مباشرة بالخاص
-    if cmd_text == "سوق":
-        from systems.shop.shop import shop_menu_handler
-        await shop_menu_handler(fake_message)
+    # --- تشغيل دالة حساب (معلوماتي) داخلياً بنجاح ---
+    if cmd_text == "حساب":
+        from systems.members import queries as members_queries
+        from systems.members.notifications import messages as member_messages
+
+        member = await members_queries.get_member(pool, user_id)
+        if member is None:
+            await callback.message.answer("❌ لم يتم تسجيلك بعد.")
+            return
+
+        from systems.members import queries as mq
+        warnings_count = await mq.get_warnings_count(pool, user_id)
+        violations_count = await mq.get_violations_count(pool, user_id)
+        active_title_name = None
+        membership_name = None
+
+        try:
+            from systems.shop import queries as shop_queries
+            from systems.shop import member_queries as shop_member_queries
+            active_title_id = await shop_member_queries.get_active_title(pool, user_id)
+            if active_title_id:
+                title = await shop_queries.get_title_by_id(pool, active_title_id)
+                if title: active_title_name = title["name"]
+
+            membership_status = await shop_member_queries.get_member_membership_status(pool, user_id)
+            if membership_status:
+                membership = await shop_queries.get_membership_by_id(pool, membership_status["membership_id"])
+                if membership: membership_name = membership["name"]
+        except Exception:
+            pass
+
+        text = member_messages.account_card_text(
+            full_name=member["full_name"], username=member["username"], level=member["level"],
+            messages_count=member["messages_count"], balance=member["balance"], warnings_count=warnings_count,
+            violations_count=violations_count, games_played=member["games_played"], games_won=member["games_won"],
+            active_title_name=active_title_name, membership_name=membership_name,
+        )
+        await callback.message.answer(text)
+        return
+
+    # --- تشغيل دوال الـ shop المصلحة الحصرية بالخاص ---
+    elif cmd_text == "سوق":
+        from systems.shop.shop import shop_menu_private
+        await shop_menu_private(fake_message)
     elif cmd_text == "عضويتي":
-        from systems.shop.shop import my_membership_handler
-        await my_membership_handler(fake_message)
+        from systems.shop.shop import membership_private
+        await membership_private(fake_message)
     elif cmd_text == "مشترياتي":
-        from systems.shop.shop import my_titles_handler
-        await my_titles_handler(fake_message)
-    elif cmd_text == "حساب":
-        # كود حساب الأصلي المفعّل داخلياً لديك
+        from systems.shop.shop import titles_private
+        await titles_private(fake_message)
+        
+    # --- الترتيب والإدارة المباشرة ---
+    elif cmd_text == "ترتيب":
+        try:
+            async with pool.acquire() as conn:
+                rows = await conn.fetch("SELECT full_name, balance FROM members ORDER BY balance DESC LIMIT 5")
+            text = "🏆 <b>قائمة أغنى 5 أعضاء بالبوت حالياً:</b>\n━━━━━━━━━━━━━━━\n"
+            for idx, r in enumerate(rows, 1):
+                text += f"{idx} - {r['full_name']} | الرصيد: <code>{r['balance']:,}</code> د.ع\n"
+            await callback.message.answer(text)
+        except Exception:
+            pass
+            
+    elif cmd_text == "admin" and user_id == OWNER_ID:
+        try:
+            from systems.owner.keyboards import main_menu_keyboard
+            await callback.message.answer("⚙️ <b>لوحة التحكم الكاملة لمالك البوت (admin):</b>", reply_markup=main_menu_keyboard())
+        except Exception:
+            pass
+
+# ===== مجدول الإرسال الدوري التلقائي المصلح والسريع =====
+
+async def engagement_scheduler_loop(bot: Bot) -> None:
+    while True:
+        pool = await get_pool()
+        settings = await engagement_queries.get_engagement_settings(pool)
+        if settings.get("enabled", False) and settings.get("messages"):
+            try:
+                await _send_engagement_message(bot)
+            except Exception:
+                pass
+            interval = settings.get("interval_seconds", 3600)
+            await asyncio.sleep(max(interval, 30))
+        else:
+            await asyncio.sleep(15)
+
+async def _send_engagement_message(bot: Bot) -> None:
+    pool = await get_pool()
+    settings = await engagement_queries.get_engagement_settings(pool)
+    if not settings.get("enabled", False) or not settings.get("messages"):
+        return
+
+    from systems.members.members import GROUP_ID_KEY
+    group_id = await get_setting(pool, GROUP_ID_KEY)
+    if not group_id:
+        return
+
+    active_msgs = [m for m in settings["messages"] if m.get("active", True)]
+    if not active_msgs:
+        return
+
+    idx = settings.get("current_index", 0)
+    if idx >= len(active_msgs):
+        idx = 0
+
+    current_msg = active_msgs[idx]
+    text = current_msg.get("message_text", "")
+    
+    keyboard = None
+    if current_msg.get("button_enabled", True):
+        button_text = current_msg.get("button_text", "📋 قائمتي")
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=button_text, callback_data="eng:open_menu")]])
+
+    try:
+        await bot.send_message(chat_id=group_id, text=text, reply_markup=keyboard)
+        await engagement_queries.add_to_engagement_history(pool, text)
+        settings["current_index"] = (idx + 1) % len(active_msgs)
+        await engagement_queries.set_engagement_settings(pool, settings)
+    except Exception:
         pass
