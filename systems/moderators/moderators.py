@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-نظام الإشراف والعقوبات الإدارية المطور (moderators) - نسخة آمنة وخالية من أخطاء الإقلاع.
+نظام الإشراف والعقوبات الإدارية المطور (moderators) - مدمج به أمر الإبلاغ المتعدد الصيغ.
 """
 
 import asyncio
@@ -106,7 +106,7 @@ async def mute_user_handler(message: Message) -> None:
         await message.chat.restrict(user_id=target_user.id, permissions=ChatPermissions(can_send_messages=False))
         await message.answer(f"🔒 تم كتم العضو <b>{target_user.full_name}</b> بنجاح بواسطة المشرف.")
     except Exception:
-        await message.answer("❌ تعذر تنفيذ أمر الكتم، تأكد من صلاحيات البوت الإدارية.")
+        await message.answer("❌ تعذر تنفيذ أمر الكتم، تأكد من صلاحيات البوت.")
 
 
 # أمر إلغاء الكتم
