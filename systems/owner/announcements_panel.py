@@ -1,15 +1,5 @@
 """
 لوحة التحكم - نظام الإعلانات المتطور.
-
-كل إعلان يمكن أن يحتوي: نص + وسائط (صورة/فيديو/GIF/ملصق) + زر رابط + تثبيت + حذف تلقائي.
-تدفق إضافة إعلان جديد:
-1. كلمة التشغيل
-2. اختيار نوع الوسائط (أو بدون)
-3. إرسال الوسائط إن وُجدت
-4. النص (اختياري)
-5. زر رابط (اختياري)
-6. تثبيت؟ (نعم/لا)
-7. حذف تلقائي؟ (مدة أو بدون)
 """
 
 from aiogram import Router, F
@@ -35,10 +25,10 @@ def _cancel_kb() -> InlineKeyboardMarkup:
     )
 
 
-def _skip_kb(next_cb: str) -> InlineKeyboardMarkup:
+def _skip_kb(cb: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="⏭️ تخطي", callback_data=next_cb)],
+            [InlineKeyboardButton(text="⏭️ تخطي", callback_data=cb)],
             [InlineKeyboardButton(text="❌ إلغاء", callback_data="owner:announcements")],
         ]
     )
@@ -48,10 +38,15 @@ def _ann_list_kb(announcements: list[dict]) -> InlineKeyboardMarkup:
     buttons = []
     for i, ann in enumerate(announcements):
         trigger = ann.get("trigger", "؟")
-        has_media = "📎" if ann.get("file_id") else ""
-        has_pin = "📌" if ann.get("pin") else ""
+        icons = ""
+        if ann.get("file_id"):
+            icons += "📎"
+        if ann.get("pin"):
+            icons += "📌"
+        if ann.get("button_url"):
+            icons += "🔘"
         buttons.append([
-            InlineKeyboardButton(text=f"{has_media}{has_pin} {trigger}", callback_data="owner:noop"),
+            InlineKeyboardButton(text=f"{icons} {trigger}", callback_data="owner:noop"),
             InlineKeyboardButton(text="🗑️", callback_data=f"owner:ann_delete:{i}"),
         ])
     buttons.append([InlineKeyboardButton(text="➕ إضافة إعلان", callback_data="owner:ann_add_trigger")])
@@ -63,14 +58,14 @@ def _media_type_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🖼️ صورة", callback_data="owner:ann_media_type:photo"),
-                InlineKeyboardButton(text="🎥 فيديو", callback_data="owner:ann_media_type:video"),
+                InlineKeyboardButton(text="🖼️ صورة", callback_data="owner:ann_media:photo"),
+                InlineKeyboardButton(text="🎥 فيديو", callback_data="owner:ann_media:video"),
             ],
             [
-                InlineKeyboardButton(text="🎞️ GIF", callback_data="owner:ann_media_type:animation"),
-                InlineKeyboardButton(text="🎭 ملصق", callback_data="owner:ann_media_type:sticker"),
+                InlineKeyboardButton(text="🎞️ GIF", callback_data="owner:ann_media:animation"),
+                InlineKeyboardButton(text="🎭 ملصق", callback_data="owner:ann_media:sticker"),
             ],
-            [InlineKeyboardButton(text="⏭️ بدون وسائط", callback_data="owner:ann_media_type:none")],
+            [InlineKeyboardButton(text="⏭️ بدون وسائط", callback_data="owner:ann_media:none")],
             [InlineKeyboardButton(text="❌ إلغاء", callback_data="owner:announcements")],
         ]
     )
@@ -88,26 +83,26 @@ def _pin_kb() -> InlineKeyboardMarkup:
     )
 
 
-def _delete_after_kb() -> InlineKeyboardMarkup:
+def _del_after_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="30 ثانية", callback_data="owner:ann_del_after:30"),
-                InlineKeyboardButton(text="دقيقة", callback_data="owner:ann_del_after:60"),
-                InlineKeyboardButton(text="5 دقائق", callback_data="owner:ann_del_after:300"),
+                InlineKeyboardButton(text="30 ثانية", callback_data="owner:ann_del:30"),
+                InlineKeyboardButton(text="دقيقة", callback_data="owner:ann_del:60"),
+                InlineKeyboardButton(text="5 دقائق", callback_data="owner:ann_del:300"),
             ],
             [
-                InlineKeyboardButton(text="ساعة", callback_data="owner:ann_del_after:3600"),
-                InlineKeyboardButton(text="يوم", callback_data="owner:ann_del_after:86400"),
+                InlineKeyboardButton(text="ساعة", callback_data="owner:ann_del:3600"),
+                InlineKeyboardButton(text="يوم", callback_data="owner:ann_del:86400"),
             ],
-            [InlineKeyboardButton(text="🔢 مخصص (ثواني)", callback_data="owner:ann_del_after:custom")],
-            [InlineKeyboardButton(text="⏭️ بدون حذف تلقائي", callback_data="owner:ann_del_after:0")],
+            [InlineKeyboardButton(text="🔢 مخصص (ثواني)", callback_data="owner:ann_del:custom")],
+            [InlineKeyboardButton(text="⏭️ بدون حذف تلقائي", callback_data="owner:ann_del:0")],
             [InlineKeyboardButton(text="❌ إلغاء", callback_data="owner:announcements")],
         ]
     )
 
 
-# ===== عرض القائمة =====
+# ===== القائمة الرئيسية =====
 
 @router.callback_query(F.data == "owner:announcements")
 async def show_announcements(callback: CallbackQuery, state: FSMContext) -> None:
@@ -138,12 +133,14 @@ async def delete_announcement(callback: CallbackQuery) -> None:
     await ann_queries.delete_announcement(pool, index)
 
     announcements = await ann_queries.get_all_announcements(pool)
-    text = f"📢 <b>الإعلانات</b> ({len(announcements)})\n━━━━━━━━━━━━━━━"
-    await callback.message.edit_text(text, reply_markup=_ann_list_kb(announcements))
+    await callback.message.edit_text(
+        f"📢 <b>الإعلانات</b> ({len(announcements)})\n━━━━━━━━━━━━━━━",
+        reply_markup=_ann_list_kb(announcements),
+    )
     await callback.answer("🗑️ تم الحذف")
 
 
-# ===== إضافة - الخطوة 1: كلمة التشغيل =====
+# ===== الخطوة 1: كلمة التشغيل =====
 
 @router.callback_query(F.data == "owner:ann_add_trigger")
 async def add_trigger_prompt(callback: CallbackQuery, state: FSMContext) -> None:
@@ -151,21 +148,21 @@ async def add_trigger_prompt(callback: CallbackQuery, state: FSMContext) -> None
         await callback.answer()
         return
 
+    await state.clear()
     await state.set_state(OwnerStates.waiting_announcement_trigger)
-    await state.update_data(new_ann={})
     await callback.message.edit_text("✏️ أرسل كلمة التشغيل (مثال: قوانين):", reply_markup=_cancel_kb())
     await callback.answer()
 
 
 @router.message(OwnerStates.waiting_announcement_trigger)
-async def add_trigger_receive(message: Message, state: FSMContext) -> None:
+async def trigger_received(message: Message, state: FSMContext) -> None:
     if not _is_owner(message.from_user.id if message.from_user else None) or not message.text:
         return
 
     trigger = message.text.strip()
 
     if " " in trigger or len(trigger) > 30:
-        await message.reply("❌ كلمة التشغيل يجب أن تكون كلمة واحدة بحد أقصى 30 حرف.", reply_markup=_cancel_kb())
+        await message.reply("❌ كلمة واحدة فقط بحد أقصى 30 حرف.", reply_markup=_cancel_kb())
         return
 
     pool = await get_pool()
@@ -173,54 +170,55 @@ async def add_trigger_receive(message: Message, state: FSMContext) -> None:
         await message.reply("❌ هذه الكلمة مستخدمة بالفعل.", reply_markup=_cancel_kb())
         return
 
-    await state.update_data(new_ann={"trigger": trigger})
+    # نحفظ الـ trigger فوراً في الـ state بشكل صريح
+    await state.update_data(
+        ann_trigger=trigger,
+        ann_file_id=None,
+        ann_file_type=None,
+        ann_text=None,
+        ann_button_text=None,
+        ann_button_url=None,
+        ann_pin=False,
+        ann_delete_after=0,
+    )
     await state.set_state(OwnerStates.waiting_announcement_media)
     await message.reply("📎 اختر نوع الوسائط:", reply_markup=_media_type_kb())
 
 
-# ===== الخطوة 2: نوع الوسائط =====
+# ===== الخطوة 2: الوسائط =====
 
-@router.callback_query(F.data.startswith("owner:ann_media_type:"))
+@router.callback_query(F.data.startswith("owner:ann_media:"))
 async def media_type_selected(callback: CallbackQuery, state: FSMContext) -> None:
     if callback.message is None or not _is_owner(callback.from_user.id):
         await callback.answer()
         return
 
     media_type = callback.data.split(":")[-1]
-    data = await state.get_data()
-    new_ann = data.get("new_ann", {})
 
     if media_type == "none":
-        new_ann["file_type"] = None
-        new_ann["file_id"] = None
-        await state.update_data(new_ann=new_ann)
+        await state.update_data(ann_file_type=None, ann_file_id=None)
         await state.set_state(OwnerStates.waiting_announcement_text)
         await callback.message.edit_text("✏️ أرسل نص الإعلان:", reply_markup=_skip_kb("owner:ann_skip_text"))
     else:
-        new_ann["file_type"] = media_type
-        await state.update_data(new_ann=new_ann)
+        await state.update_data(ann_file_type=media_type)
         await state.set_state(OwnerStates.waiting_announcement_media)
 
-        type_labels = {"photo": "صورة 🖼️", "video": "فيديو 🎥", "animation": "GIF 🎞️", "sticker": "ملصق 🎭"}
+        labels = {"photo": "🖼️ صورة", "video": "🎥 فيديو", "animation": "🎞️ GIF", "sticker": "🎭 ملصق"}
         await callback.message.edit_text(
-            f"📎 أرسل {type_labels.get(media_type, 'الوسائط')} الآن:",
-            reply_markup=_cancel_kb(),
+            f"📎 أرسل {labels.get(media_type, 'الوسائط')} الآن:", reply_markup=_cancel_kb()
         )
-
     await callback.answer()
 
 
 @router.message(OwnerStates.waiting_announcement_media)
-async def media_received(message: Message, state: FSMContext) -> None:
+async def media_file_received(message: Message, state: FSMContext) -> None:
     if not _is_owner(message.from_user.id if message.from_user else None):
         return
 
     data = await state.get_data()
-    new_ann = data.get("new_ann", {})
-    file_type = new_ann.get("file_type")
+    file_type = data.get("ann_file_type")
 
     file_id = None
-
     if file_type == "photo" and message.photo:
         file_id = message.photo[-1].file_id
     elif file_type == "video" and message.video:
@@ -231,18 +229,13 @@ async def media_received(message: Message, state: FSMContext) -> None:
         file_id = message.sticker.file_id
 
     if file_id is None:
-        await message.reply("❌ نوع الوسائط غير مطابق. أرسل النوع الصحيح:", reply_markup=_cancel_kb())
+        await message.reply("❌ نوع الوسائط غير مطابق، أرسل النوع الصحيح:", reply_markup=_cancel_kb())
         return
 
-    new_ann["file_id"] = file_id
-    await state.update_data(new_ann=new_ann)
+    await state.update_data(ann_file_id=file_id)
     await state.set_state(OwnerStates.waiting_announcement_text)
 
-    if file_type == "sticker":
-        # الملصق لا يدعم نصاً، ننتقل مباشرة للزر
-        await message.reply("📎 أرسل نص الزر (أو تخطَّ):", reply_markup=_skip_kb("owner:ann_skip_text"))
-    else:
-        await message.reply("✏️ أرسل نص الإعلان (أو تخطَّ):", reply_markup=_skip_kb("owner:ann_skip_text"))
+    await message.reply("✏️ أرسل نص الإعلان (أو تخطَّ):", reply_markup=_skip_kb("owner:ann_skip_text"))
 
 
 # ===== الخطوة 3: النص =====
@@ -252,10 +245,7 @@ async def text_received(message: Message, state: FSMContext) -> None:
     if not _is_owner(message.from_user.id if message.from_user else None) or not message.text:
         return
 
-    data = await state.get_data()
-    new_ann = data.get("new_ann", {})
-    new_ann["text"] = message.text
-    await state.update_data(new_ann=new_ann)
+    await state.update_data(ann_text=message.text)
     await state.set_state(OwnerStates.waiting_announcement_button_text)
     await message.reply("🔘 أرسل نص زر الرابط (أو تخطَّ):", reply_markup=_skip_kb("owner:ann_skip_btn"))
 
@@ -278,10 +268,7 @@ async def button_text_received(message: Message, state: FSMContext) -> None:
     if not _is_owner(message.from_user.id if message.from_user else None) or not message.text:
         return
 
-    data = await state.get_data()
-    new_ann = data.get("new_ann", {})
-    new_ann["button_text"] = message.text.strip()
-    await state.update_data(new_ann=new_ann)
+    await state.update_data(ann_button_text=message.text.strip())
     await state.set_state(OwnerStates.waiting_announcement_button_url)
     await message.reply("🔗 أرسل رابط الزر:", reply_markup=_cancel_kb())
 
@@ -302,10 +289,7 @@ async def button_url_received(message: Message, state: FSMContext) -> None:
     if not _is_owner(message.from_user.id if message.from_user else None) or not message.text:
         return
 
-    data = await state.get_data()
-    new_ann = data.get("new_ann", {})
-    new_ann["button_url"] = message.text.strip()
-    await state.update_data(new_ann=new_ann)
+    await state.update_data(ann_button_url=message.text.strip())
     await state.set_state(OwnerStates.waiting_announcement_delete_after)
     await message.reply("📌 هل تريد تثبيت الإعلان؟", reply_markup=_pin_kb())
 
@@ -319,18 +303,15 @@ async def pin_selected(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     pin = callback.data.split(":")[-1] == "yes"
-    data = await state.get_data()
-    new_ann = data.get("new_ann", {})
-    new_ann["pin"] = pin
-    await state.update_data(new_ann=new_ann)
+    await state.update_data(ann_pin=pin)
     await state.set_state(OwnerStates.waiting_announcement_delete_after)
-    await callback.message.edit_text("⏳ هل تريد حذفاً تلقائياً؟", reply_markup=_delete_after_kb())
+    await callback.message.edit_text("⏳ هل تريد حذفاً تلقائياً؟", reply_markup=_del_after_kb())
     await callback.answer()
 
 
-# ===== الخطوة 6: الحذف التلقائي =====
+# ===== الخطوة 6: الحذف التلقائي + حفظ =====
 
-@router.callback_query(F.data.startswith("owner:ann_del_after:"))
+@router.callback_query(F.data.startswith("owner:ann_del:"))
 async def delete_after_selected(callback: CallbackQuery, state: FSMContext) -> None:
     if callback.message is None or not _is_owner(callback.from_user.id):
         await callback.answer()
@@ -344,55 +325,58 @@ async def delete_after_selected(callback: CallbackQuery, state: FSMContext) -> N
         await callback.answer()
         return
 
-    await _finalize_announcement(callback, state, int(value))
+    await _save_announcement(callback, state, int(value))
 
 
 @router.message(OwnerStates.waiting_announcement_delete_after)
-async def custom_delete_after_received(message: Message, state: FSMContext) -> None:
+async def custom_del_after_received(message: Message, state: FSMContext) -> None:
     if not _is_owner(message.from_user.id if message.from_user else None) or not message.text:
         return
 
     if not message.text.isdigit():
-        await message.reply("❌ أرسل رقماً صحيحاً بالثواني.", reply_markup=_cancel_kb())
+        await message.reply("❌ أرسل رقماً صحيحاً.", reply_markup=_cancel_kb())
         return
 
-    await _finalize_announcement_from_message(message, state, int(message.text))
-
-
-async def _finalize_announcement(callback: CallbackQuery, state: FSMContext, delete_after: int) -> None:
     data = await state.get_data()
-    new_ann = data.get("new_ann", {})
-    new_ann["delete_after"] = delete_after
-
     pool = await get_pool()
-    await ann_queries.add_announcement(pool, new_ann)
+    ann = _build_ann(data, int(message.text))
+    await ann_queries.add_announcement(pool, ann)
     await state.clear()
 
     announcements = await ann_queries.get_all_announcements(pool)
-    trigger = new_ann.get("trigger", "")
-    pin_text = " (مثبّت 📌)" if new_ann.get("pin") else ""
-    del_text = f" (يُحذف بعد {delete_after} ثانية)" if delete_after > 0 else ""
+    await message.reply(
+        f"✅ تم حفظ الإعلان «{ann['trigger']}»\n\n📢 <b>الإعلانات</b> ({len(announcements)})",
+        reply_markup=_ann_list_kb(announcements),
+    )
+
+
+async def _save_announcement(callback: CallbackQuery, state: FSMContext, delete_after: int) -> None:
+    data = await state.get_data()
+    pool = await get_pool()
+    ann = _build_ann(data, delete_after)
+    await ann_queries.add_announcement(pool, ann)
+    await state.clear()
+
+    announcements = await ann_queries.get_all_announcements(pool)
+    pin_text = " (مثبّت 📌)" if ann.get("pin") else ""
+    del_text = f" (يُحذف بعد {delete_after}ث)" if delete_after > 0 else ""
 
     await callback.message.edit_text(
-        f"✅ تم حفظ الإعلان «{trigger}»{pin_text}{del_text}\n\n📢 <b>الإعلانات</b> ({len(announcements)})\n━━━━━━━━━━━━━━━",
+        f"✅ تم حفظ الإعلان «{ann['trigger']}»{pin_text}{del_text}\n\n📢 <b>الإعلانات</b> ({len(announcements)})",
         reply_markup=_ann_list_kb(announcements),
     )
     await callback.answer()
 
 
-async def _finalize_announcement_from_message(message: Message, state: FSMContext, delete_after: int) -> None:
-    data = await state.get_data()
-    new_ann = data.get("new_ann", {})
-    new_ann["delete_after"] = delete_after
-
-    pool = await get_pool()
-    await ann_queries.add_announcement(pool, new_ann)
-    await state.clear()
-
-    announcements = await ann_queries.get_all_announcements(pool)
-    trigger = new_ann.get("trigger", "")
-
-    await message.reply(
-        f"✅ تم حفظ الإعلان «{trigger}»\n\n📢 <b>الإعلانات</b> ({len(announcements)})\n━━━━━━━━━━━━━━━",
-        reply_markup=_ann_list_kb(announcements),
-    )
+def _build_ann(data: dict, delete_after: int) -> dict:
+    """يبني قاموس الإعلان من بيانات الـ FSM state."""
+    return {
+        "trigger": data.get("ann_trigger", ""),
+        "text": data.get("ann_text") or "",
+        "file_id": data.get("ann_file_id"),
+        "file_type": data.get("ann_file_type"),
+        "button_text": data.get("ann_button_text"),
+        "button_url": data.get("ann_button_url"),
+        "pin": data.get("ann_pin", False),
+        "delete_after": delete_after,
+    }
