@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-نظام التفاعل التلقائي المطور (engagement) - النسخة المصلحة لعمل الأزرار كأوامر في الخاص 100%.
+نظام التفاعل التلقائي المطور (engagement) - النسخة المصلحة لإرسال الأوامر الصريحة بالخاص 100%.
 """
 
 import asyncio
 import random
 from aiogram import Router, F, Bot
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 
 from core.database import get_pool, get_setting
 from core.config import OWNER_ID
@@ -16,19 +16,19 @@ from systems.engagement.notifications import messages
 
 router = Router(name="engagement")
 
-# ===== بناء لوحات المفاتيح القائمة على تحويل الأزرار إلى أوامر نصية حقيقية بالخاص =====
+# ===== بناء لوحات المفاتيح لرسائل الخاص لتعمل كأوامر حقيقية ومباشرة =====
 
 def _member_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="👤 معلوماتي", callback_data="eng:cmd:حساب"),
-            InlineKeyboardButton(text="👑 عضويتي", switch_inline_query_current_chat="عضويتي")
+            InlineKeyboardButton(text="👑 عضويتي", callback_data="eng:cmd:عضويتي")
         ],
         [
-            InlineKeyboardButton(text="🏷️ ألقابي", switch_inline_query_current_chat="مشترياتي"),
-            InlineKeyboardButton(text="🛒 السوق", switch_inline_query_current_chat="سوق")
+            InlineKeyboardButton(text="🏷️ ألقابي", callback_data="eng:cmd:مشترياتي"),
+            InlineKeyboardButton(text="🛒 السوق", callback_data="eng:cmd:سوق")
         ],
-        [InlineKeyboardButton(text="🏆 الترتيب", switch_inline_query_current_chat="ترتيب")],
+        [InlineKeyboardButton(text="🏆 الترتيب", callback_data="eng:cmd:ترتيب")],
     ])
 
 def _staff_menu_keyboard(rank: str) -> InlineKeyboardMarkup:
@@ -36,31 +36,31 @@ def _staff_menu_keyboard(rank: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="👤 معلوماتي", callback_data="eng:cmd:حساب"),
-            InlineKeyboardButton(text="👑 عضويتي", switch_inline_query_current_chat="عضويتي")
+            InlineKeyboardButton(text="👑 عضويتي", callback_data="eng:cmd:عضويتي")
         ],
         [
-            InlineKeyboardButton(text="🏷️ ألقابي", switch_inline_query_current_chat="مشترياتي"),
-            InlineKeyboardButton(text="🛒 السوق", switch_inline_query_current_chat="سوق")
+            InlineKeyboardButton(text="🏷️ ألقابي", callback_data="eng:cmd:مشترياتي"),
+            InlineKeyboardButton(text="🛒 السوق", callback_data="eng:cmd:سوق")
         ],
-        [InlineKeyboardButton(text="🏆 الترتيب", switch_inline_query_current_chat="ترتيب")],
-        [InlineKeyboardButton(text="📋 القائمة الإدارية", switch_inline_query_current_chat=cmd)],
+        [InlineKeyboardButton(text="🏆 الترتيب", callback_data="eng:cmd:ترتيب")],
+        [InlineKeyboardButton(text="📋 القائمة الإدارية", callback_data=f"eng:cmd:{cmd}")],
     ])
 
 def _owner_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="👤 معلوماتي", callback_data="eng:cmd:حساب"),
-            InlineKeyboardButton(text="👑 عضويتي", switch_inline_query_current_chat="عضويتي")
+            InlineKeyboardButton(text="👑 عضويتي", callback_data="eng:cmd:عضويتي")
         ],
         [
-            InlineKeyboardButton(text="🏷️ ألقابي", switch_inline_query_current_chat="مشترياتي"),
-            InlineKeyboardButton(text="🛒 السوق", switch_inline_query_current_chat="سوق")
+            InlineKeyboardButton(text="🏷️ ألقابي", callback_data="eng:cmd:مشترياتي"),
+            InlineKeyboardButton(text="🛒 السوق", callback_data="eng:cmd:سوق")
         ],
-        [InlineKeyboardButton(text="🏆 الترتيب", switch_inline_query_current_chat="ترتيب")],
-        [InlineKeyboardButton(text="📋 القائمة الإدارية", switch_inline_query_current_chat="admin")],
+        [InlineKeyboardButton(text="🏆 الترتيب", callback_data="eng:cmd:ترتيب")],
+        [InlineKeyboardButton(text="📋 القائمة الإدارية", callback_data="eng:cmd:admin")],
     ])
 
-# ===== معالج فتح القائمة من المجموعة في الخاص =====
+# ===== معالج فتح القائمة الدوري للمجموعة =====
 
 @router.callback_query(F.data == "eng:open_menu")
 async def open_personal_menu(callback: CallbackQuery) -> None:
@@ -89,7 +89,7 @@ async def open_personal_menu(callback: CallbackQuery) -> None:
     except Exception:
         await callback.answer(messages.NEED_START, show_alert=True)
 
-# ===== معالج زر معلوماتي (حساب) الذي يعمل داخل الكود بنجاح =====
+# ===== المعالج الرئيسي المصلح لتشغيل كل نظام كأمر نصي مستقل بالكامل =====
 
 @router.callback_query(F.data.startswith("eng:cmd:"))
 async def run_command(callback: CallbackQuery) -> None:
@@ -97,16 +97,24 @@ async def run_command(callback: CallbackQuery) -> None:
         await callback.answer()
         return
 
-    cmd = callback.data.split(":")[-1]
+    cmd_text = callback.data.split(":")[-1]
     user_id = callback.from_user.id
     pool = await get_pool()
+    rank = await get_user_rank(pool, user_id)
+
+    # حماية الأزرار الإدارية
+    if cmd_text in ("مشرف", "ادمن", "admin"):
+        if user_id != OWNER_ID and rank not in ("admin", "moderator"):
+            await callback.answer("⚠️ عذراً، هذا الزر مخصص للإدارة فقط.")
+            return
 
     await callback.answer()
 
-    from systems.members import queries as members_queries
-    from systems.members.notifications import messages as member_messages
+    # --- 1️⃣ زر معلوماتي (حساب) ---
+    if cmd_text == "حساب":
+        from systems.members import queries as members_queries
+        from systems.members.notifications import messages as member_messages
 
-    if cmd == "حساب":
         member = await members_queries.get_member(pool, user_id)
         if member is None:
             await callback.message.answer("❌ لم يتم تسجيلك بعد. أرسل رسالة في المجموعة أولاً.")
@@ -115,7 +123,6 @@ async def run_command(callback: CallbackQuery) -> None:
         from systems.members import queries as mq
         warnings_count = await mq.get_warnings_count(pool, user_id)
         violations_count = await mq.get_violations_count(pool, user_id)
-
         active_title_name = None
         membership_name = None
 
@@ -142,8 +149,39 @@ async def run_command(callback: CallbackQuery) -> None:
             active_title_name=active_title_name, membership_name=membership_name,
         )
         await callback.message.answer(text)
+        return
 
-# ===== مجدول الإرسال الدوري التلقائي =====
+    # --- 2️⃣ لباقي الأزرار: محاكاة وضخ الحدث للأوامر الحقيقية دون إظهار المعرف أو التنبيهات المزعجة ---
+    fake_message = Message(
+        message_id=callback.message.message_id,
+        date=callback.message.date,
+        chat=callback.message.chat,
+        from_user=callback.from_user,
+        text=cmd_text
+    )
+
+    try:
+        # نقوم بالبحث عن الـ router المخصص لكل نظام وجعل الأنظمة الأخرى تنفذ الأمر تلقائياً في الخاص
+        if cmd_text == "سوق" or cmd_text == "عضويتي" or cmd_text == "مشترياتي":
+            from systems.shop import shop as shop_system
+            await shop_system.router.propagate_event(event=fake_message, bot=callback.bot)
+            
+        elif cmd_text == "ترتيب":
+            from systems.wallet import leaderboard
+            await leaderboard.router.propagate_event(event=fake_message, bot=callback.bot)
+            
+        elif cmd_text == "مشرف" or cmd_text == "ادمن":
+            from systems.moderators import moderators
+            await moderators.router.propagate_event(event=fake_message, bot=callback.bot)
+            
+        elif cmd_text == "admin":
+            from systems.owner import owner
+            await owner.router.propagate_event(event=fake_message, bot=callback.bot)
+    except Exception:
+        # حل بديل احتياطي في حال استمرار قيود محادثة الخاص في السستم الأصلي
+        await callback.message.answer(f"💬 لتشغيل ميزة «{cmd_text}» بنجاح، يرجى كتابتها صريحة في الشات.")
+
+# ===== مجدول الإرسال الدوري التلقائي المصلح =====
 
 async def engagement_scheduler_loop(bot: Bot) -> None:
     while True:
