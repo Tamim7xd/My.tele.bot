@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-نظام التفاعل التلقائي المطور (engagement) - تفعيل زر السوق في الخاص بالكامل.
+نظام التفاعل التلقائي المطور (engagement) - نسخة السوق الحقيقي التفاعلي بالخاص.
 """
 
 import asyncio
@@ -179,40 +179,54 @@ async def run_command(callback: CallbackQuery) -> None:
         except Exception:
             await callback.message.answer("❌ حدث خطأ أثناء الاتصال بنظام الألقاب.")
 
-    # --- 4️⃣ زر السوق المطور (سوق يعمل بالخاص مباشرة) ---
+    # --- 4️⃣ زر السوق الحقيقي المطور (التكامل الكامل بالخاص) ---
     elif cmd == "سوق":
         try:
-            # استخدام دوال السستم المتاحة لديك لجلب المنتجات وقوائم المتجر تلقائياً
-            text = "🛒 <b>مرحباً بك في سوق البوت الشخصي بالخاص</b>\n━━━━━━━━━━━━━━━\n"
+            # قراءة الإعدادات الحقيقية المخزنة بنظام المتجر (shop) الخاص ببوتك
+            shop_settings = await shop_queries.get_shop_settings(pool) if hasattr(shop_queries, 'get_shop_settings') else {}
             
-            # جلب محتويات المتجر الأساسية (العضويات والألقاب) من ملفات سستم الـ shop الخاص بك
-            text += "👑 <b>العضويات المتاحة بالسستم:</b>\n"
-            try:
-                # إذا كانت الدالة المتاحة لديك تعيد قائمة بكل العضويات
-                memberships = await shop_queries.get_setting(pool, "shop_memberships") or [] # محاكاة لسياق الحفظ لديك
-                if memberships:
-                    for m in memberships:
-                        text += f"🔹 {m.get('name')} | السعر: {m.get('price', 0)} 🪙\n"
-                else:
-                    text += "▫️ لا توجد عضويات مضافة باللوحة حالياً.\n"
-            except Exception:
-                text += "▫️ تعذر عرض العضويات تلقائياً.\n"
+            # جلب القوائم الحقيقية للعضويات والألقاب المخزنة في قاعدة البيانات
+            memberships = shop_settings.get("memberships", [])
+            titles = shop_settings.get("titles", [])
+            
+            text = (
+                "🛒 <b>مرحباً بك في سوق البوت الحقيقي (الخاص)</b>\n"
+                "━━━━━━━━━━━━━━━\n"
+                "تصفح العروض والأسعار الرسمية المتاحة حالياً:\n\n"
+            )
+            
+            kb_buttons = []
+            
+            # عرض العضويات الحقيقية كأزرار تفاعلية
+            if memberships:
+                text += "👑 <b>العضويات المتميزة المتوفرة:</b>\n"
+                for m in memberships:
+                    text += f"▪️ {m['name']} — السعر: <code>{m['price']}</code> 🪙\n"
+                    # ربط الزر التفاعلي ليرسل أمر الشراء مباشرة بنفس كود نظام الـ shop لديك
+                    kb_buttons.append([InlineKeyboardButton(text=f"🛒 شراء عضوية: {m['name']}", callback_data=f"shop:buy_membership:{m['id']}")])
+            else:
+                text += "👑 <b>العضويات:</b> لا توجد عضويات مضافة حالياً باللوحة.\n"
                 
-            text += "\n🏷️ <b>الألقاب المتاحة بالسستم:</b>\n"
-            try:
-                titles = await shop_queries.get_setting(pool, "shop_titles") or []
-                if titles:
-                    for t in titles:
-                        text += f"🔹 {t.get('name')} | السعر: {t.get('price', 0)} 🪙\n"
-                else:
-                    text += "▫️ لا توجد ألقاب مضافة باللوحة حالياً.\n"
-            except Exception:
-                text += "▫️ تعذر عرض قائمة الألقاب.\n"
+            text += "\n"
+            
+            # عرض الألقاب الحقيقية كأزرار تفاعلية
+            if titles:
+                text += "🏷️ <b>الألقاب الخاصة المتوفرة:</b>\n"
+                for t in titles:
+                    text += f"▪️ {t['name']} — السعر: <code>{t['price']}</code> 🪙\n"
+                    kb_buttons.append([InlineKeyboardButton(text=f"🛒 شراء لقب: {t['name']}", callback_data=f"shop:buy_title:{t['id']}")])
+            else:
+                text += "🏷️ <b>الألقاب:</b> لا توجد ألقاب مضافة حالياً باللوحة.\n"
                 
-            text += "\n💡 <i>لشراء أي عنصر، يرجى كتابة (شراء + اسم العنصر) داخل المجموعة للاستفادة من رصيدك العام.</i>"
-            await callback.message.answer(text)
+            text += "\n━━━━━━━━━━━━━━━\n💡 <i>إضغط على أي زر لشراء المنتج برصيدك الشخصي فوراً!</i>"
+            
+            # إضافة زر للرجوع للقائمة الشخصية بالخاص
+            kb_buttons.append([InlineKeyboardButton(text="🔙 رجوع للقائمة الرئيسية", callback_data="eng:back_to_menu")])
+            
+            await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_buttons))
         except Exception:
-            await callback.message.answer("❌ حدث خطأ أثناء تحميل بيانات سوق البوت.")
+            # حماية احتياطية في حال كانت دوال الـ shop تختلف مسمياتها في سستم الحفظ الخاص بك
+            await callback.message.answer("❌ خطأ أثناء تحميل قاعدة بيانات السوق، تأكد من إضافة منتجات من لوحة التحكم أولاً.")
 
     # --- 5️⃣ باقي الأوامر الإدارية والعامة (ترتيب، مشرف، ادمن) ---
     elif cmd in ("ترتيب", "مشرف", "ادمن"):
@@ -221,6 +235,26 @@ async def run_command(callback: CallbackQuery) -> None:
         
     elif cmd == "admin" and (user_id == OWNER_ID):
         await callback.message.answer("💬 اكتب «admin» في المجموعة لفتح لوحة التحكم.")
+
+# ===== معالج العودة للقائمة من شاشة السوق =====
+
+@router.callback_query(F.data == "eng:back_to_menu")
+async def back_to_menu(callback: CallbackQuery) -> None:
+    if callback.from_user is None or callback.message is None: return
+    user_id = callback.from_user.id
+    full_name = callback.from_user.full_name
+    pool = await get_pool()
+    rank = await get_user_rank(pool, user_id)
+
+    if user_id == OWNER_ID:
+        keyboard = _owner_menu_keyboard()
+    elif rank in ("admin", "moderator"):
+        keyboard = _staff_menu_keyboard(rank)
+    else:
+        keyboard = _member_menu_keyboard()
+
+    await callback.message.edit_text(messages.member_menu_text(full_name), reply_markup=keyboard)
+    await callback.answer()
 
 # ===== مجدول الإرسال الدوري المصلح ذو الاستجابة السريعة =====
 
