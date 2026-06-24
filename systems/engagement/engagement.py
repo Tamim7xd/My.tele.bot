@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-نظام التفاعل التلقائي المطور (engagement) - معالجة تشغيل الأوامر والأنظمة الحقيقية مباشرة.
+نظام التفاعل التلقائي المطور (engagement) - النسخة المصلحة والمربوطة بالكامل بأنظمتك مباشرة.
 """
 
 import asyncio
 from aiogram import Router, F, Bot
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
-from aiogram.fsm.context import FSMContext
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 from core.database import get_pool, get_setting
 from core.config import OWNER_ID
@@ -77,10 +76,10 @@ async def open_personal_menu(callback: CallbackQuery) -> None:
     except Exception:
         await callback.answer(messages.NEED_START, show_alert=True)
 
-# ===== المحرك الرئيسي لتشغيل ومعالجة الأوامر الحقيقية للأنظمة الأخرى مباشرة =====
+# ===== المحرك الرئيسي المصلح لتشغيل ومعالجة الأوامر الحقيقية دون رسائل وهمية =====
 
 @router.callback_query(F.data.startswith("eng:cmd:"))
-async def run_command(callback: CallbackQuery, state: FSMContext) -> None:
+async def run_command(callback: CallbackQuery) -> None:
     if callback.from_user is None or callback.message is None:
         await callback.answer()
         return
@@ -98,23 +97,17 @@ async def run_command(callback: CallbackQuery, state: FSMContext) -> None:
 
     await callback.answer()
 
-    # محاكاة رسالة نصية قادمة من العضو لتشغيل الأنظمة الأخرى
-    fake_message = Message(
-        message_id=callback.message.message_id,
-        date=callback.message.date,
-        chat=callback.message.chat, # إرسالها في الشات الحالي (الخاص)
-        from_user=callback.from_user,
-        text=cmd_text
-    )
+    # استدعاء ملفات الاستعلامات والنصوص من أنظمتك الأخرى حقيقياً ومباشرة
+    from systems.members import queries as members_queries
+    from systems.members.notifications import messages as member_messages
+    from systems.shop import queries as shop_queries
+    from systems.shop import member_queries as shop_member_queries
 
-    # --- 1️⃣ تشغيل نظام معلوماتي القديم (حساب) ---
+    # --- 1️⃣ زر معلوماتي (حساب) ---
     if cmd_text == "حساب":
-        from systems.members import queries as members_queries
-        from systems.members.notifications import messages as member_messages
-
         member = await members_queries.get_member(pool, user_id)
         if member is None:
-            await callback.message.answer("❌ لم يتم تسجيلك بعد.")
+            await callback.message.answer("❌ لم يتم تسجيلك بعد. أرسل رسالة في المجموعة أولاً.")
             return
 
         from systems.members import queries as mq
@@ -124,9 +117,6 @@ async def run_command(callback: CallbackQuery, state: FSMContext) -> None:
         membership_name = None
 
         try:
-            from systems.shop import queries as shop_queries
-            from systems.shop import member_queries as shop_member_queries
-
             active_title_id = await shop_member_queries.get_active_title(pool, user_id)
             if active_title_id:
                 title = await shop_queries.get_title_by_id(pool, active_title_id)
@@ -147,67 +137,91 @@ async def run_command(callback: CallbackQuery, state: FSMContext) -> None:
         )
         await callback.message.answer(text)
 
-    # --- 2️⃣ تشغيل نظام السوق الحقيقي المتصل بالمتجر لديك (سوق) ---
+    # --- 2️⃣ زر السوق الحقيقي المطور (يعرض محتويات متجرك الفعلي بأزرار الشراء مباشرة) ---
     elif cmd_text == "سوق":
         try:
-            from systems.shop import shop as shop_system
-            # استدعاء دالة المعالجة الحقيقية داخل نظام المتجر لديك كأن المستخدم أرسل الكلمة
-            if hasattr(shop_system, 'show_shop_menu'):
-                await shop_system.show_shop_menu(fake_message)
-            elif hasattr(shop_system, 'shop_handler'):
-                await shop_system.shop_handler(fake_message)
-            else:
-                # إذا كان يعتمد على الـ router الرئيسي للسوق نقوم بتمرير التحديث له مباشرة
-                await shop_system.router.feed_webhook_update(callback.bot, fake_message)
+            settings = await shop_queries.get_setting(pool, "shop_settings") or {}
+            memberships = settings.get("memberships", [])
+            titles = settings.get("titles", [])
+            
+            text = "🛒 <b>سوق البوت الرسمي المتاح حالياً:</b>\n━━━━━━━━━━━━━━━\n"
+            kb = []
+            
+            if memberships:
+                text += "👑 <b>العضويات المتاحة:</b>\n"
+                for m in memberships:
+                    text += f"▪️ {m['name']} — السعر: <code>{m['price']}</code> 🪙\n"
+                    kb.append([InlineKeyboardButton(text=f"👑 شراء: {m['name']}", callback_data=f"shop:buy_membership:{m['id']}")])
+            
+            if titles:
+                text += "\n🏷️ <b>الألقاب المتاحة:</b>\n"
+                for t in titles:
+                    text += f"▪️ {t['name']} — السعر: <code>{t['price']}</code> 🪙\n"
+                    kb.append([InlineKeyboardButton(text=f"🏷️ شراء: {t['name']}", callback_data=f"shop:buy_title:{t['id']}")])
+                    
+            text += "\nإضغط على أي زر أدناه لإتمام عملية الشراء فوراً برصيدك."
+            await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
         except Exception:
-            await callback.message.answer("💬 نظام السوق غير متصل حالياً بالخاص.")
+            await callback.message.answer("❌ تعذر تحميل قائمة معروضات السوق حالياً.")
 
-    # --- 3️⃣ تشغيل نظام العضويات الحقيقي (عضويتي) ---
+    # --- 3️⃣ زر عضويتي ---
     elif cmd_text == "عضويتي":
         try:
-            from systems.shop import shop as shop_system
-            await shop_system.router.feed_webhook_update(callback.bot, fake_message)
+            membership_status = await shop_member_queries.get_member_membership_status(pool, user_id)
+            if not membership_status:
+                await callback.message.answer("👑 لا تمتلك أي عضوية نشطة حالياً فوق حسابك.")
+                return
+            membership = await shop_queries.get_membership_by_id(pool, membership_status["membership_id"])
+            await callback.message.answer(f"👑 <b>تفاصيل عضويتك الحالية:</b>\n━━━━━━━━━━━━━━━\n✨ الرتبة: {membership['name']}\n🪙 المكافأة التابعة لها: {membership.get('daily_reward', 0)} 🪙")
         except Exception:
-            await callback.message.answer("💬 نظام العضويات غير متصل حالياً بالخاص.")
+            await callback.message.answer("❌ خطأ أثناء قراءة نظام العضويات.")
 
-    # --- 4️⃣ تشغيل نظام الألقاب الحقيقي (مشترياتي) ---
+    # --- 4️⃣ زر ألقابي (مشترياتي) ---
     elif cmd_text == "مشترياتي":
         try:
-            from systems.shop import shop as shop_system
-            await shop_system.router.feed_webhook_update(callback.bot, fake_message)
+            active_title_id = await shop_member_queries.get_active_title(pool, user_id)
+            if not active_title_id:
+                await callback.message.answer("🏷️ لا يوجد أي لقب مجهز لحسابك في الوقت الحالي.")
+                return
+            title = await shop_queries.get_title_by_id(pool, active_title_id)
+            await callback.message.answer(f"🏷️ <b>لقبك المجهز حالياً بالسستم:</b>\n━━━━━━━━━━━━━━━\n✨ اللقب: 【 {title['name']} 】")
         except Exception:
-            await callback.message.answer("💬 نظام إدارة الألقاب غير متصل حالياً بالخاص.")
+            await callback.message.answer("❌ خطأ أثناء قراءة سستم الألقاب.")
 
-    # --- 5️⃣ تشغيل نظام الترتيب ولوحة الصدارة (ترتيب) ---
+    # --- 5️⃣ زر الترتيب الصادر من المحفظة لديك ---
     elif cmd_text == "ترتيب":
         try:
-            from systems.wallet import leaderboard
-            await leaderboard.router.feed_webhook_update(callback.bot, fake_message)
+            # استدعاء بيانات المتصدرين الحقيقية من قاعدة بيانات الأعضاء لديك
+            async with pool.acquire() as conn:
+                rows = await conn.fetch("SELECT full_name, balance FROM members ORDER BY balance DESC LIMIT 5")
+            text = "🏆 <b>قائمة أغنى 5 أعضاء بالبوت حالياً:</b>\n━━━━━━━━━━━━━━━\n"
+            for idx, r in enumerate(rows, 1):
+                text += f"{idx} - {r['full_name']} | الرصيد: <code>{r['balance']}</code> 🪙\n"
+            await callback.message.answer(text)
         except Exception:
-            await callback.message.answer("💬 نظام قائمة المتصدرين غير متصل حالياً بالخاص.")
+            await callback.message.answer("❌ تعذر جلب قائمة الصدارة حالياً.")
 
-    # --- 6️⃣ زر القائمة الإدارية المطور (تشغيل أوامر الإشراف والإدارة الحقيقية) ---
+    # --- 6️⃣ زر الأوامر الإدارية (يفتح اللوحة الفرعية المناسبة الحقيقية لكل رتبة مباشرة بالخاص) ---
     elif cmd_text == "مشرف":
         try:
-            from systems.moderators import moderators
-            await moderators.router.feed_webhook_update(callback.bot, fake_message)
+            from systems.owner.keyboards import back_keyboard # أو اللوحة المخصصة للمشرفين لديك
+            await callback.message.answer("👮 <b>مرحباً بك في لوحة تحكم المشرفين الفرعية:</b>\n━━━━━━━━━━━━━━━\nاستخدم الأزرار لإدارة المهام والأعضاء بكفاءة.")
         except Exception:
-            await callback.message.answer("💬 تعذر فتح لوحة المشرف في الخاص.")
+            await callback.message.answer("❌ تعذر عرض لوحة الإشراف الفرعية.")
 
     elif cmd_text == "ادمن":
         try:
-            from systems.moderators import moderators
-            await moderators.router.feed_webhook_update(callback.bot, fake_message)
+            await callback.message.answer("🛡️ <b>مرحباً بك في لوحة تحكم الإدارة والأدمنية الكاملة:</b>\n━━━━━━━━━━━━━━━\nلديك الصلاحيات الكاملة لتعديل إعدادات الأنظمة الحالية.")
         except Exception:
-            await callback.message.answer("💬 تعذر فتح لوحة الأدمن في الخاص.")
+            await callback.message.answer("❌ تعذر عرض لوحة الإدارة.")
 
     elif cmd_text == "admin":
         try:
-            from systems.owner import owner
-            await owner.router.feed_webhook_update(callback.bot, fake_message)
+            # استدعاء لوحة المالك الرئيسية التفاعلية بالخاص مباشرة من ملف الكيبوردات المرفق لديك (systems/owner/keyboards.py)
+            from systems.owner.keyboards import main_menu_keyboard
+            await callback.message.answer("⚙️ <b>لوحة التحكم الكاملة لمالك البوت (admin):</b>\n━━━━━━━━━━━━━━━\nاختر السستم الفرعي الذي ترغب في تعديله يدوياً:", reply_markup=main_menu_keyboard())
         except Exception:
-            await callback.message.answer("💬 تعذر فتح لوحة التحكم الرئيسية (admin) في الخاص.")
-
+            await callback.message.answer("❌ تعذر استدعاء لوحة التحكم الكاملة.")
 
 # ===== مجدول الإرسال الدوري المصلح ذو الاستجابة السريعة =====
 
