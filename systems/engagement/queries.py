@@ -1,29 +1,44 @@
 """
-نظام التفاعل التلقائي (engagement) - الإعدادات المصلحة والمطورة.
+نظام التفاعل التلقائي (engagement) - الإعدادات.
+
+الإعدادات الجديدة:
+- أزرار اختيارية: كل زر يمكن تفعيله/تعطيله
+- إيقاف الأوامر النصية بالمجموعة (سوق/عضوية/لقب/مشرف/ادمن/admin)
+  وتحويلها للخاص فقط عبر القائمة
 """
 
 import asyncpg
-import uuid
+
 from core.database import get_setting, set_setting
+
 
 ENGAGEMENT_KEY = "engagement_settings"
 
-# تم تعديل الهيكل ليدعم قائمة رسائل متعددة وسجل التاريخ
 DEFAULT_SETTINGS = {
     "enabled": False,
     "interval_seconds": 3600,
-    "current_index": 0,
-    "messages": [
-        {
-            "id": "default",
-            "message_text": "👋 اضغط الزر لفتح قائمتك الشخصية!",
-            "button_text": "📋 قائمتي",
-            "button_enabled": True,
-            "active": True
-        }
-    ],
-    "history": []
+    "message_text": "👋 اضغط الزر لفتح قائمتك الشخصية!",
+    "button_text": "📋 قائمتي",
+    # الأزرار الاختيارية (كلها مفعّلة افتراضياً)
+    "btn_account": True,       # 👤 معلوماتي
+    "btn_membership": True,    # 👑 عضويتي
+    "btn_titles": True,        # 🏷️ ألقابي
+    "btn_shop": True,          # 🛒 السوق
+    "btn_leaderboard": True,   # 🏆 الترتيب
+    "btn_staff_panel": True,   # لوحة المشرف/الأدمن/المالك
+    # إيقاف الأوامر النصية بالمجموعة
+    "disable_group_commands": False,
 }
+
+BUTTON_LABELS = {
+    "btn_account": "👤 معلوماتي",
+    "btn_membership": "👑 عضويتي",
+    "btn_titles": "🏷️ ألقابي",
+    "btn_shop": "🛒 السوق",
+    "btn_leaderboard": "🏆 الترتيب",
+    "btn_staff_panel": "⚙️ لوحة الإدارة",
+}
+
 
 async def get_engagement_settings(pool: asyncpg.Pool) -> dict:
     stored = await get_setting(pool, ENGAGEMENT_KEY, None)
@@ -38,8 +53,10 @@ async def get_engagement_settings(pool: asyncpg.Pool) -> dict:
 
     return merged
 
+
 async def set_engagement_settings(pool: asyncpg.Pool, settings: dict) -> None:
     await set_setting(pool, ENGAGEMENT_KEY, settings)
+
 
 async def toggle_engagement(pool: asyncpg.Pool) -> bool:
     settings = await get_engagement_settings(pool)
@@ -47,31 +64,16 @@ async def toggle_engagement(pool: asyncpg.Pool) -> bool:
     await set_engagement_settings(pool, settings)
     return settings["enabled"]
 
-# --- الميزات الجديدة المضافة بنفس أسلوب السستم ---
 
-async def add_new_message(pool: asyncpg.Pool, text: str, btn_text: str) -> str:
+async def toggle_button(pool: asyncpg.Pool, btn_key: str) -> bool:
     settings = await get_engagement_settings(pool)
-    msg_id = str(uuid.uuid4())[:6]
-    
-    new_msg = {
-        "id": msg_id,
-        "message_text": text,
-        "button_text": btn_text,
-        "button_enabled": True,
-        "active": True
-    }
-    settings["messages"].append(new_msg)
+    settings[btn_key] = not settings.get(btn_key, True)
     await set_engagement_settings(pool, settings)
-    return msg_id
+    return settings[btn_key]
 
-async def add_to_engagement_history(pool: asyncpg.Pool, text: str) -> None:
-    import datetime
+
+async def toggle_disable_commands(pool: asyncpg.Pool) -> bool:
     settings = await get_engagement_settings(pool)
-    time_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    
-    log_entry = f"⏰ [{time_str}] - {text[:30]}..."
-    settings["history"].append(log_entry)
-    
-    # الاحتفاظ بآخر 10 رسائل فقط في السجل لعدم تضخيم البيانات
-    settings["history"] = settings["history"][-10:]
+    settings["disable_group_commands"] = not settings.get("disable_group_commands", False)
     await set_engagement_settings(pool, settings)
+    return settings["disable_group_commands"]
