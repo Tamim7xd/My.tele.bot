@@ -49,6 +49,7 @@ def memberships_list_keyboard(memberships: list[dict], index: int) -> InlineKeyb
     buttons.append([InlineKeyboardButton(text="💰 تعديل السعر", callback_data=f"owner:mship_edit_price:{membership_id}")])
     buttons.append([InlineKeyboardButton(text="⏳ تعديل المدة", callback_data=f"owner:mship_edit_duration:{membership_id}")])
     buttons.append([InlineKeyboardButton(text="🎁 تعديل المكافأة اليومية", callback_data=f"owner:mship_edit_reward:{membership_id}")])
+    buttons.append([InlineKeyboardButton(text="🗑️ cooldown المسح", callback_data=f"owner:mship_edit_cooldown:{membership_id}")])
     buttons.append([InlineKeyboardButton(text="⚙️ تبديل المزايا", callback_data=f"owner:mship_features:{membership_id}")])
     buttons.append([InlineKeyboardButton(text="📋 من اشتراها", callback_data=f"owner:mship_owners:{membership_id}:0")])
     buttons.append([InlineKeyboardButton(text="🔙 رجوع", callback_data="owner:shop")])
