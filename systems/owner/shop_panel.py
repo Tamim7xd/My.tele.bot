@@ -819,3 +819,148 @@ async def grant_membership_confirm(callback: CallbackQuery) -> None:
 
     await callback.answer(smessages.updated_text("العضوية"), show_alert=True)
     await _render_member_membership(callback, user_id, offset)
+
+
+# ===== تعديل cooldown المسح لكل عضوية =====
+
+@router.callback_query(F.data.startswith("owner:mship_edit_cooldown:"))
+async def membership_cooldown_prompt(callback: CallbackQuery, state: FSMContext) -> None:
+    if callback.message is None or not _is_owner(callback.from_user.id):
+        await callback.answer()
+        return
+
+    membership_id = callback.data.split(":")[-1]
+
+    pool = await get_pool()
+    membership = await shop_queries.get_membership_by_id(pool, membership_id)
+
+    if membership is None:
+        await callback.answer()
+        return
+
+    current = membership.get("clear_cooldown_seconds", 300)
+
+    from systems.shop.queries import format_duration
+    current_text = format_duration(current) if current > 0 else "بلا انتظار"
+
+    await state.set_state(OwnerStates.waiting_membership_clear_cooldown)
+    await state.update_data(membership_id=membership_id)
+
+    await callback.message.edit_text(
+        f"🗑️ <b>cooldown المسح لعضوية {membership['name']}</b>\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"الحالي: {current_text}\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"اختر المدة الجديدة:",
+        reply_markup=_cooldown_keyboard(membership_id),
+    )
+    await callback.answer()
+
+
+def _cooldown_keyboard(membership_id: str):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⏱️ دقيقة", callback_data=f"owner:mship_cd_set:{membership_id}:60"),
+                InlineKeyboardButton(text="5 دقائق", callback_data=f"owner:mship_cd_set:{membership_id}:300"),
+                InlineKeyboardButton(text="10 دقائق", callback_data=f"owner:mship_cd_set:{membership_id}:600"),
+            ],
+            [
+                InlineKeyboardButton(text="30 دقيقة", callback_data=f"owner:mship_cd_set:{membership_id}:1800"),
+                InlineKeyboardButton(text="ساعة", callback_data=f"owner:mship_cd_set:{membership_id}:3600"),
+                InlineKeyboardButton(text="يوم", callback_data=f"owner:mship_cd_set:{membership_id}:86400"),
+            ],
+            [InlineKeyboardButton(text="🔢 مخصص (ثواني)", callback_data=f"owner:mship_cd_custom:{membership_id}")],
+            [InlineKeyboardButton(text="🚫 بلا انتظار", callback_data=f"owner:mship_cd_set:{membership_id}:0")],
+            [InlineKeyboardButton(text="🔙 رجوع", callback_data="owner:shop_memberships:0")],
+        ]
+    )
+
+
+@router.callback_query(F.data.startswith("owner:mship_cd_set:"))
+async def membership_cooldown_set(callback: CallbackQuery) -> None:
+    if callback.message is None or not _is_owner(callback.from_user.id):
+        await callback.answer()
+        return
+
+    _, _, membership_id, seconds_str = callback.data.split(":")
+    seconds = int(seconds_str)
+
+    pool = await get_pool()
+    membership = await shop_queries.get_membership_by_id(pool, membership_id)
+
+    if membership is None:
+        await callback.answer()
+        return
+
+    membership["clear_cooldown_seconds"] = seconds
+    await shop_queries.update_membership(pool, membership_id, membership)
+
+    from systems.shop.queries import format_duration
+    text = format_duration(seconds) if seconds > 0 else "بلا انتظار"
+
+    memberships = await shop_queries.get_memberships(pool)
+    index = next((i for i, m in enumerate(memberships) if m["id"] == membership_id), 0)
+
+    await callback.message.edit_text(
+        smessages.membership_admin_text(memberships[index]),
+        reply_markup=skeyboards.memberships_list_keyboard(memberships, index),
+    )
+    await callback.answer(f"✅ تم تحديث cooldown المسح إلى: {text}")
+
+
+@router.callback_query(F.data.startswith("owner:mship_cd_custom:"))
+async def membership_cooldown_custom(callback: CallbackQuery, state: FSMContext) -> None:
+    if callback.message is None or not _is_owner(callback.from_user.id):
+        await callback.answer()
+        return
+
+    membership_id = callback.data.split(":")[-1]
+
+    await state.set_state(OwnerStates.waiting_membership_clear_cooldown)
+    await state.update_data(membership_id=membership_id)
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    cancel_kb = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="❌ إلغاء", callback_data="owner:shop_memberships:0")]]
+    )
+
+    await callback.message.edit_text("✏️ أرسل مدة الـ cooldown بالثواني:", reply_markup=cancel_kb)
+    await callback.answer()
+
+
+@router.message(OwnerStates.waiting_membership_clear_cooldown)
+async def membership_cooldown_receive(message: Message, state: FSMContext) -> None:
+    if not _is_owner(message.from_user.id if message.from_user else None):
+        return
+
+    if not message.text or not message.text.isdigit():
+        await message.reply("❌ أرسل رقماً صحيحاً بالثواني.")
+        return
+
+    seconds = int(message.text)
+    data = await state.get_data()
+    membership_id = data.get("membership_id")
+
+    pool = await get_pool()
+    membership = await shop_queries.get_membership_by_id(pool, membership_id)
+
+    if membership is None:
+        await state.clear()
+        return
+
+    membership["clear_cooldown_seconds"] = seconds
+    await shop_queries.update_membership(pool, membership_id, membership)
+    await state.clear()
+
+    from systems.shop.queries import format_duration
+    text = format_duration(seconds) if seconds > 0 else "بلا انتظار"
+
+    memberships = await shop_queries.get_memberships(pool)
+    index = next((i for i, m in enumerate(memberships) if m["id"] == membership_id), 0)
+
+    await message.reply(
+        f"✅ تم تحديث cooldown المسح إلى: {text}",
+        reply_markup=skeyboards.memberships_list_keyboard(memberships, index),
+    )
