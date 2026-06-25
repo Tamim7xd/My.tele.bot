@@ -1,13 +1,12 @@
 """
-نظام المتجر (shop) - الملف الرئيسي الكامل والمعدل.
+نظام المتجر (shop) - الملف الرئيسي.
 
 أوامر التشغيل: "سوق"، "متجر"، "شراء" -> يفتح المتجر، حصرية لمن كتبها.
-أمر "مسح"/"مسح محادثتي"/"مسح محادثاته" -> مجاني وفوري لأصحاب العضويات ويحذف رسائلهم فقط.
+أمر "مسح"/"مسح محادثتي"/"مسح محادثاته" -> حصري لمالك عضوية تتيح المسح.
 أمر "عضوية"/"عضويتي" -> تفاصيل العضوية الحالية.
 أمر "لقب"/"القاب"/"مشتريات"/"مشترياتي" -> الألقاب المملوكة + تفعيل أحدها.
 """
 
-import asyncio
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 
@@ -80,7 +79,7 @@ async def noop(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-# ===== مسح المحادثة من داخل قائمة المتجر (تظل مدفوعة بفلوس) =====
+# ===== مسح المحادثة من المتجر =====
 
 @router.callback_query(F.data.startswith("shop:clear_intro:"))
 async def clear_intro(callback: CallbackQuery) -> None:
@@ -133,7 +132,33 @@ async def clear_confirm(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-# ===== أمر "مسح" النصي المباشر (مجاني تماماً وفوري لأصحاب العضويات ويحذف رسائلهم فقط) =====
+async def _delete_member_messages(callback: CallbackQuery, user_id: int) -> int:
+    """
+    يحذف رسائل عضو معين للخلف من نقطة رسالة المتجر، ضمن نطاق محدد
+    من اللوحة (نفس مبدأ cleanup، لكن يحاول حذف الرسائل ضمن النطاق
+    بغض النظر عن صاحبها - تيليجرام لا يوفر API لمعرفة صاحب رسالة
+    قبل محاولة الحذف، فهذا أفضل تقريب عملي متاح حالياً).
+    """
+    pool = await get_pool()
+    chat_id = callback.message.chat.id
+    range_count = await shop_queries.get_clear_chat_range(pool)
+
+    start_id = callback.message.message_id
+    end_id = max(1, start_id - range_count)
+
+    deleted = 0
+
+    for msg_id in range(start_id, end_id - 1, -1):
+        try:
+            await callback.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+            deleted += 1
+        except Exception:
+            continue
+
+    return deleted
+
+
+# ===== أمر "مسح"/"مسح محادثتي"/"مسح محادثاته" المباشر =====
 
 @router.message(F.chat.type.in_({"group", "supergroup"}), F.text.in_(CLEAR_TRIGGERS))
 async def clear_chat_command(message: Message) -> None:
@@ -146,69 +171,41 @@ async def clear_chat_command(message: Message) -> None:
     membership_status = await shop_member_queries.get_member_membership_status(pool, user_id)
 
     if membership_status is None:
-        return  # صمت تام إذا لم تكن هناك عضوية نشطة
+        return  # صمت تام - لا عضوية فعّالة
 
     membership = await shop_queries.get_membership_by_id(pool, membership_status["membership_id"])
 
     if membership is None or not membership.get("can_clear_chat"):
-        return  # صمت تام إذا كانت العضوية لا تدعم ميزة المسح
+        return
 
-    # التنفيذ المجاني والفوري للعضو
-    deleted_count = await _delete_member_messages(message, user_id)
+    # ===== فحص الـ Cooldown =====
+    cooldown_seconds = membership.get("clear_cooldown_seconds", 300)
 
-    await shop_member_queries.log_clear_chat(pool, user_id, deleted_count)
-    await shop_member_queries.set_last_clear_chat_at(pool, user_id)
+    if cooldown_seconds > 0:
+        last_clear_at = await shop_member_queries.get_last_clear_chat_at(pool, user_id)
 
-    # إشعار مؤقت للعضو ثم حذفه ليبقى الشات نظيفاً
-    notice = await message.reply(messages.clear_chat_done_text(deleted_count))
-    
-    await asyncio.sleep(3)
-    try:
-        await notice.delete()
-    except Exception:
-        pass
+        if last_clear_at is not None:
+            from datetime import datetime, timedelta
+            next_allowed = last_clear_at + timedelta(seconds=cooldown_seconds)
+            now = datetime.utcnow()
 
+            if now < next_allowed:
+                remaining = int((next_allowed - now).total_seconds())
+                minutes = remaining // 60
+                seconds = remaining % 60
 
-async def _delete_member_messages(callback: CallbackQuery | Message, user_id: int) -> int:
-    """دالة فحص وحذف ذكية ومحمية: تحذف فقط رسائل العضو المستهدف وتتخطى البقية تماماً."""
-    pool = await get_pool()
-    chat_id = callback.chat.id if isinstance(callback, Message) else callback.message.chat.id
-    start_id = callback.message_id if isinstance(callback, Message) else callback.message.message_id
-    
-    range_count = await shop_queries.get_clear_chat_range(pool)
-    end_id = max(1, start_id - range_count)
+                if minutes > 0:
+                    time_text = f"{minutes} دقيقة و{seconds} ثانية"
+                else:
+                    time_text = f"{seconds} ثانية"
 
-    deleted = 0
-    bot_obj = callback.bot if isinstance(callback, Message) else callback.message.bot
+                await message.reply(f"⏳ يمكنك استخدام المسح مجدداً بعد {time_text}.")
+                return
 
-    for msg_id in range(start_id, end_id - 1, -1):
-        try:
-            # حذف رسالة الأمر النصي نفسها أولاً في حال كان الاستدعاء من رسالة مباشرة
-            if isinstance(callback, Message) and msg_id == start_id:
-                await callback.delete()
-                deleted += 1
-                continue
+    keyboard = shop_keyboards.clear_chat_keyboard(user_id)
+    price = await shop_queries.get_clear_chat_price(pool)
 
-            # فحص هوية كاتب الرسالة بشكل صامت عن طريق التوجيه (Forward) المؤقت لخاص العضو نفسه
-            try:
-                check_msg = await bot_obj.forward_message(chat_id=user_id, from_chat_id=chat_id, message_id=msg_id)
-                is_same_user = check_msg.forward_from and check_msg.forward_from.id == user_id
-                
-                # إزالة رسالة الفحص من خاص العضو فوراً لمنع الإزعاج
-                await check_msg.delete()
-                
-                # إذا كانت الرسالة ملكاً لنفس العضو الذي طلب المسح، يتم حذفها من الجروب
-                if is_same_user:
-                    await bot_obj.delete_message(chat_id=chat_id, message_id=msg_id)
-                    deleted += 1
-            except Exception:
-                # إذا فشل الفحص بسبب إعدادات الخصوصية للحساب، نتخطاها حمايةً لرسائل الآخرين
-                continue
-                
-        except Exception:
-            continue
-
-    return deleted
+    await message.reply(messages.clear_chat_intro_text(price), reply_markup=keyboard)
 
 
 # ===== العضويات =====
