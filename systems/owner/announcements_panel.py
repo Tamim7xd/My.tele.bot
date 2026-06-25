@@ -158,6 +158,8 @@ async def add_trigger_prompt(callback: CallbackQuery, state: FSMContext) -> None
 async def trigger_received(message: Message, state: FSMContext) -> None:
     if not _is_owner(message.from_user.id if message.from_user else None) or not message.text:
         return
+    if message.chat.type != "private":
+        return
 
     trigger = message.text.strip()
 
@@ -214,6 +216,8 @@ async def media_type_selected(callback: CallbackQuery, state: FSMContext) -> Non
 async def media_file_received(message: Message, state: FSMContext) -> None:
     if not _is_owner(message.from_user.id if message.from_user else None):
         return
+    if message.chat.type != "private":
+        return
 
     data = await state.get_data()
     file_type = data.get("ann_file_type")
@@ -244,6 +248,8 @@ async def media_file_received(message: Message, state: FSMContext) -> None:
 async def text_received(message: Message, state: FSMContext) -> None:
     if not _is_owner(message.from_user.id if message.from_user else None) or not message.text:
         return
+    if message.chat.type != "private":
+        return
 
     await state.update_data(ann_text=message.text)
     await state.set_state(OwnerStates.waiting_announcement_button_text)
@@ -267,6 +273,8 @@ async def skip_text(callback: CallbackQuery, state: FSMContext) -> None:
 async def button_text_received(message: Message, state: FSMContext) -> None:
     if not _is_owner(message.from_user.id if message.from_user else None) or not message.text:
         return
+    if message.chat.type != "private":
+        return
 
     await state.update_data(ann_button_text=message.text.strip())
     await state.set_state(OwnerStates.waiting_announcement_button_url)
@@ -287,6 +295,8 @@ async def skip_button(callback: CallbackQuery, state: FSMContext) -> None:
 @router.message(OwnerStates.waiting_announcement_button_url)
 async def button_url_received(message: Message, state: FSMContext) -> None:
     if not _is_owner(message.from_user.id if message.from_user else None) or not message.text:
+        return
+    if message.chat.type != "private":
         return
 
     await state.update_data(ann_button_url=message.text.strip())
@@ -331,6 +341,8 @@ async def delete_after_selected(callback: CallbackQuery, state: FSMContext) -> N
 @router.message(OwnerStates.waiting_announcement_delete_after)
 async def custom_del_after_received(message: Message, state: FSMContext) -> None:
     if not _is_owner(message.from_user.id if message.from_user else None) or not message.text:
+        return
+    if message.chat.type != "private":
         return
 
     if not message.text.isdigit():
