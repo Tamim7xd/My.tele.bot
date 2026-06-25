@@ -93,3 +93,6 @@ class OwnerStates(StatesGroup):
     waiting_engagement_message = State()
     waiting_engagement_button = State()
     waiting_engagement_interval = State()
+
+    # cooldown المسح لكل عضوية
+    waiting_membership_clear_cooldown = State()
