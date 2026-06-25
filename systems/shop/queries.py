@@ -33,26 +33,31 @@ DEFAULT_MEMBERSHIPS = [
         "id": "vip", "name": "VIP", "price": 50000, "duration_seconds": 2592000,  # 30 يوم
         "daily_reward": 5000, "can_clear_chat": True, "can_send_media": True,
         "no_replies": False,
+        "clear_cooldown_seconds": 300,
     },
     {
         "id": "gold", "name": "🥇 Gold", "price": 75000, "duration_seconds": 2592000,  # 30 يوم
         "daily_reward": 5000, "can_clear_chat": True, "can_send_media": True,
         "no_replies": False,
+        "clear_cooldown_seconds": 300,
     },
     {
         "id": "platinum", "name": "💎 Platinum", "price": 100000, "duration_seconds": 2592000,  # 30 يوم
         "daily_reward": 5000, "can_clear_chat": True, "can_send_media": True,
         "no_replies": False,
+        "clear_cooldown_seconds": 300,
     },
     {
         "id": "elite", "name": "⭐ Elite", "price": 125000, "duration_seconds": 2592000,  # 30 يوم
         "daily_reward": 5000, "can_clear_chat": True, "can_send_media": True,
         "no_replies": False,
+        "clear_cooldown_seconds": 300,
     },
     {
         "id": "super_vip", "name": "👑 Super VIP", "price": 200000, "duration_seconds": 2592000,  # 30 يوم
         "daily_reward": 5000, "can_clear_chat": True, "can_send_media": True,
         "no_replies": True,
+        "clear_cooldown_seconds": 300,
     },
 ]
 
