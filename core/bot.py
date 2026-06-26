@@ -91,6 +91,12 @@ async def main() -> None:
     from systems.owner import bulk_panel
     dp.include_router(bulk_panel.router)
 
+    # ⚠️ engagement يُسجَّل هنا أولاً ليعترض أوامر سوق/عضوية/لقب/ترتيب/مشرف
+    # قبل أن تلتقطها shop/wallet/staff — هذا الترتيب ضروري لعمل إيقاف الأوامر
+
+    from systems.engagement import engagement as engagement_system
+    dp.include_router(engagement_system.router)
+
     from systems.moderators import moderators as moderators_system
     dp.include_router(moderators_system.router)
 
@@ -138,9 +144,6 @@ async def main() -> None:
 
     from systems.shop import no_replies as shop_no_replies
     dp.include_router(shop_no_replies.router)
-
-    from systems.engagement import engagement as engagement_system
-    dp.include_router(engagement_system.router)
 
     from systems.protection import protection as protection_system
     dp.include_router(protection_system.router)
