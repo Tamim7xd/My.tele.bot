@@ -276,6 +276,23 @@ async def buy_membership(callback: CallbackQuery) -> None:
 
     await shop_member_queries.log_purchase(pool, owner_id, "membership", membership_id, membership["price"])
 
+    # ✅ إشعار المجموعة عند شراء عضوية
+    try:
+        from core.database import get_setting
+        from systems.members.members import GROUP_ID_KEY
+        group_id = await get_setting(pool, GROUP_ID_KEY)
+        if group_id:
+            await callback.bot.send_message(
+                chat_id=group_id,
+                text=messages.membership_purchase_group_notification(
+                    callback.from_user.full_name,
+                    membership["name"],
+                    membership["price"],
+                ),
+            )
+    except Exception:
+        pass
+
     expires_str = expires_at.strftime("%Y-%m-%d %H:%M") if expires_at else "بلا انتهاء (دائمة)"
 
     await callback.message.edit_text(
@@ -351,6 +368,23 @@ async def buy_title(callback: CallbackQuery) -> None:
     await wallet.deduct_balance(pool, owner_id, title["price"])
     await shop_member_queries.add_owned_title(pool, owner_id, title_id)
     await shop_member_queries.log_purchase(pool, owner_id, "title", title_id, title["price"])
+
+    # ✅ إشعار المجموعة عند شراء لقب
+    try:
+        from core.database import get_setting
+        from systems.members.members import GROUP_ID_KEY
+        group_id = await get_setting(pool, GROUP_ID_KEY)
+        if group_id:
+            await callback.bot.send_message(
+                chat_id=group_id,
+                text=messages.title_purchase_group_notification(
+                    callback.from_user.full_name,
+                    title["name"],
+                    title["price"],
+                ),
+            )
+    except Exception:
+        pass
 
     await callback.message.edit_text(
         messages.title_purchased_text(title["name"]),
