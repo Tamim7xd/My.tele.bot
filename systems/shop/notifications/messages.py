@@ -122,3 +122,19 @@ def my_titles_text(owned_titles: list[dict], active_title_id: str | None) -> str
 
 def title_activated_text(name: str) -> str:
     return f"✅ تم تفعيل لقب {name} في ملفك الشخصي."
+
+
+# ===== إشعارات المجموعة عند الشراء =====
+
+def membership_purchase_group_notification(full_name: str, membership_name: str, price: int) -> str:
+    return (
+        f"🛒 <b>{full_name}</b> اشترى عضوية <b>{membership_name}</b>\n"
+        f"💰 السعر: {price:,} د.ع"
+    )
+
+
+def title_purchase_group_notification(full_name: str, title_name: str, price: int) -> str:
+    return (
+        f"🏷️ <b>{full_name}</b> اشترى لقب <b>{title_name}</b>\n"
+        f"💰 السعر: {price:,} د.ع"
+    )
