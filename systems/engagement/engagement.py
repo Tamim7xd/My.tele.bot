@@ -135,21 +135,22 @@ def _build_owner_keyboard(settings: dict) -> InlineKeyboardMarkup:
 
 
 # ===== معالج إيقاف الأوامر النصية بالمجموعة =====
+# ✅ الفلتر F.text.in_(DISABLED_GROUP_COMMANDS) يجعل هذا الـ handler
+#    يعمل فقط على الأوامر المحددة — لا على كل رسالة
 
-@router.message(F.chat.type.in_({"group", "supergroup"}), F.text)
+@router.message(
+    F.chat.type.in_({"group", "supergroup"}),
+    F.text.in_(DISABLED_GROUP_COMMANDS),
+)
 async def intercept_disabled_commands(message: Message) -> None:
-    if message.from_user is None or message.text is None:
-        raise SkipHandler
-
-    text = message.text.strip()
-
-    if text not in DISABLED_GROUP_COMMANDS:
+    if message.from_user is None:
         raise SkipHandler
 
     pool = await get_pool()
     settings = await engagement_queries.get_engagement_settings(pool)
 
     if not settings.get("disable_group_commands", False):
+        # الميزة معطّلة — اسمح للنظام الآخر بمعالجة الأمر
         raise SkipHandler
 
     # الأمر موقوف — أرشد العضو للخاص
@@ -335,16 +336,18 @@ async def run_command(callback: CallbackQuery) -> None:
 
 async def engagement_scheduler_loop(bot: Bot) -> None:
     while True:
-        try:
-            await _send_engagement_message(bot)
-        except Exception:
-            pass
-
         pool = await get_pool()
         settings = await engagement_queries.get_engagement_settings(pool)
         interval = settings.get("interval_seconds", 3600)
 
+        # ✅ ننتظر الفاصل الزمني أولاً ثم نرسل
+        # لتجنب الإرسال الفوري عند كل إعادة تشغيل للبوت
         await asyncio.sleep(max(interval, 30))
+
+        try:
+            await _send_engagement_message(bot)
+        except Exception:
+            pass
 
 
 async def _send_engagement_message(bot: Bot) -> None:
